@@ -179,4 +179,10 @@ app.delete('/conversations/:phone', (req, res) => {
   res.json({ ok:true });
 });
 
+// Mantener despierto — ping cada 14 minutos
+const RENDER_URL = process.env.RENDER_EXTERNAL_URL || `http://localhost:${PORT}`;
+setInterval(() => {
+  fetch(`${RENDER_URL}/status`).catch(() => {});
+}, 14 * 60 * 1000);
+
 app.listen(PORT, () => { console.log(`🚀 Puerto ${PORT}`); startWA(); });
