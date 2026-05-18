@@ -65,53 +65,69 @@ async function startWA() {
 
     sock.ev.on('creds.update', saveCreds);
 
-    sock.ev.on('messages.upsert', async ({ messages, type }) => {
-      if (type !== 'notify') return;
-      for (const msg of messages) {
-        if (msg.key.fromMe) continue;
-        const from = msg.key.remoteJid;
-        if (!from?.endsWith('@s.whatsapp.net')) continue;
+    sock.ev.on('messages.upsert', async (m) => {
+  const msg = m.messages[0];
+  if (!msg) return;
 
-        const text =
-          msg.message?.conversation ||
-          msg.message?.extendedTextMessage?.text ||
-          msg.message?.imageMessage?.caption || '';
+  if (msg.key.fromMe) return;
 
-        if (!text) continue;
+  const from = msg.key.remoteJid;
+  if (!from || !from.endsWith('@s.whatsapp.net')) return;
 
-        const phone = from.replace('@s.whatsapp.net', '');
-        if (!convs[phone]) convs[phone] = [];
-        convs[phone].push({
-          role: 'user', text,
-          time: new Date().toLocaleTimeString('es-CO', { hour:'2-digit', minute:'2-digit' })
-        });
-        console.log(`📨 ${phone}: ${text.substring(0,60)}`);
+  const phone = from.replace('@s.whatsapp.net', '');
 
-        try {
-          const res  = await fetch(`${WORKER}/wa`, {
-            method:  'POST',
-            headers: { 'Content-Type':'application/json', 'x-secret': SECRET },
-            body:    JSON.stringify({ from: phone, text })
-          });
-          const data  = await res.json();
-          const reply = data.reply || '';
-          if (reply) {
-            await sock.sendMessage(from, { text: reply });
-            convs[phone].push({
-              role: 'assistant', text: reply,
-              time: new Date().toLocaleTimeString('es-CO', { hour:'2-digit', minute:'2-digit' })
-            });
-            console.log(`🤖 → ${phone}: ${reply.substring(0,60)}`);
-          }
-        } catch(e) { console.error('Worker error:', e.message); }
-      }
+  const text =
+    msg.message?.conversation ||
+    msg.message?.extendedTextMessage?.text ||
+    msg.message?.imageMessage?.caption ||
+    '';
+
+  if (!text) return;
+
+  console.log("📩 MSG:", phone, text);
+
+  if (!convs[phone]) convs[phone] = [];
+
+  convs[phone].push({
+    role: 'user',
+    text,
+    time: new Date().toLocaleTimeString('es-CO', {
+      hour: '2-digit',
+      minute: '2-digit'
+    })
+  });
+
+  // 🔁 LLAMADA AL WORKER IA
+  try {
+    const res = await fetch(`${WORKER}/wa`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-secret': SECRET
+      },
+      body: JSON.stringify({ from: phone, text })
     });
 
-  } catch(e) {
-    console.error('startWA error:', e.message);
-    setTimeout(startWA, 5000);
+    const data = await res.json();
+    const reply = data.reply;
+
+    if (reply) {
+      await sock.sendMessage(from, { text: reply });
+
+      convs[phone].push({
+        role: 'assistant',
+        text: reply,
+        time: new Date().toLocaleTimeString('es-CO', {
+          hour: '2-digit',
+          minute: '2-digit'
+        })
+      });
+    }
+
+  } catch (e) {
+    console.error("Worker error:", e.message);
   }
-}
+});
 
 // ── RUTAS ─────────────────────────────────────────
 
