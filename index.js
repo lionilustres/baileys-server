@@ -64,70 +64,84 @@ async function startWA() {
     });
 
     sock.ev.on('creds.update', saveCreds);
+    
+    sock.ev.on('messages.upsert', async (event) => {
 
-    sock.ev.on('messages.upsert', async (m) => {
-  const msg = m.messages[0];
-  if (!msg) return;
+  if (event.type !== 'notify') return;
 
-  if (msg.key.fromMe) return;
+  for (const msg of event.messages) {
 
-  const from = msg.key.remoteJid;
-  if (!from || !from.endsWith('@s.whatsapp.net')) return;
+    if (!msg.message || msg.key.fromMe) continue;
 
-  const phone = from.replace('@s.whatsapp.net', '');
+    const jid = msg.key.remoteJid;
+    if (!jid?.endsWith('@s.whatsapp.net')) continue;
 
-  const text =
-    msg.message?.conversation ||
-    msg.message?.extendedTextMessage?.text ||
-    msg.message?.imageMessage?.caption ||
-    '';
+    const phone = jid.replace('@s.whatsapp.net', '');
 
-  if (!text) return;
+    const text =
+      msg.message.conversation ||
+      msg.message.extendedTextMessage?.text ||
+      msg.message.imageMessage?.caption ||
+      '';
 
-  console.log("📩 MSG:", phone, text);
+    if (!text) continue;
 
-  if (!convs[phone]) convs[phone] = [];
+    console.log("📩 WA:", phone, text);
 
-  convs[phone].push({
-    role: 'user',
-    text,
-    time: new Date().toLocaleTimeString('es-CO', {
-      hour: '2-digit',
-      minute: '2-digit'
-    })
-  });
+    // ✅ GUARDAR MENSAJE USUARIO
+    if (!convs[phone]) convs[phone] = [];
 
-  // 🔁 LLAMADA AL WORKER IA
-  try {
-    const res = await fetch(`${WORKER}/wa`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-secret': SECRET
-      },
-      body: JSON.stringify({ from: phone, text })
+    convs[phone].push({
+      role: 'user',
+      text,
+      time: new Date().toLocaleTimeString('es-CO', {
+        hour: '2-digit',
+        minute: '2-digit'
+      })
     });
 
-    const data = await res.json();
-    const reply = data.reply;
-
-    if (reply) {
-      await sock.sendMessage(from, { text: reply });
-
-      convs[phone].push({
-        role: 'assistant',
-        text: reply,
-        time: new Date().toLocaleTimeString('es-CO', {
-          hour: '2-digit',
-          minute: '2-digit'
-        })
+    // 🔁 ENVÍA AL WORKER
+    try {
+      const res = await fetch(`${WORKER}/wa`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-secret': SECRET
+        },
+        body: JSON.stringify({ from: phone, text })
       });
-    }
 
-  } catch (e) {
-    console.error("Worker error:", e.message);
+      const data = await res.json();
+
+      if (data.reply) {
+
+        // ✅ RESPONDER EN WHATSAPP
+        await sock.sendMessage(jid, { text: data.reply });
+
+        // ✅ GUARDAR RESPUESTA IA
+        convs[phone].push({
+          role: 'assistant',
+          text: data.reply,
+          time: new Date().toLocaleTimeString('es-CO', {
+            hour: '2-digit',
+            minute: '2-digit'
+          })
+        });
+      }
+
+    } catch (e) {
+      console.error("Worker error:", e.message);
+    }
   }
 });
+
+     } catch(e) {
+    console.error('startWA error:', e.message);
+    setTimeout(startWA, 5000);
+  }
+}
+
+
 
 // ── RUTAS ─────────────────────────────────────────
 
