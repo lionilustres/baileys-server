@@ -11,7 +11,7 @@ import { rmSync, existsSync } from 'fs';
 
 const app      = express();
 const PORT     = process.env.PORT   || 3000;
-const WORKER   = process.env.WORKER || 'https://a.businessasesores.org';
+const WORKER = process.env.WORKER || 'https://chat.hostweb.workers.dev';
 const SECRET   = process.env.SECRET || 'ba_secret_2026';
 const AUTH_DIR = './auth';
 
