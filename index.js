@@ -71,24 +71,30 @@ async function startWA() {
 
   for (const msg of event.messages) {
 
+    // 🔍 DEBUG REAL
+    console.log("🧪 RAW MSG:", JSON.stringify(msg, null, 2));
+
     if (!msg.message || msg.key.fromMe) continue;
 
     const jid = msg.key.remoteJid;
-    if (!jid?.endsWith('@s.whatsapp.net')) continue;
+    if (!jid) continue;
 
     const phone = jid.replace('@s.whatsapp.net', '');
 
     const text =
-      msg.message.conversation ||
-      msg.message.extendedTextMessage?.text ||
-      msg.message.imageMessage?.caption ||
+      msg.message?.conversation ||
+      msg.message?.extendedTextMessage?.text ||
+      msg.message?.imageMessage?.caption ||
+      msg.message?.videoMessage?.caption ||
+      msg.message?.buttonsResponseMessage?.selectedButtonId ||
+      msg.message?.listResponseMessage?.title ||
       '';
 
     if (!text) continue;
 
     console.log("📩 WA:", phone, text);
 
-    // ✅ GUARDAR MENSAJE USUARIO
+    // ✅ guardar
     if (!convs[phone]) convs[phone] = [];
 
     convs[phone].push({
@@ -100,7 +106,9 @@ async function startWA() {
       })
     });
 
-    // 🔁 ENVÍA AL WORKER
+    console.log("📦 CONVS:", convs);
+
+    // 🔁 worker
     try {
       const res = await fetch(`${WORKER}/wa`, {
         method: 'POST',
@@ -115,10 +123,8 @@ async function startWA() {
 
       if (data.reply) {
 
-        // ✅ RESPONDER EN WHATSAPP
         await sock.sendMessage(jid, { text: data.reply });
 
-        // ✅ GUARDAR RESPUESTA IA
         convs[phone].push({
           role: 'assistant',
           text: data.reply,
@@ -127,6 +133,7 @@ async function startWA() {
             minute: '2-digit'
           })
         });
+
       }
 
     } catch (e) {
