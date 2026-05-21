@@ -197,17 +197,69 @@ app.get('/conversations/:phone', (req, res) => {
 });
 
 app.post('/send', async (req, res) => {
-  if (req.headers['x-secret'] !== SECRET) return res.status(401).json({ error:'Unauthorized' });
-  const { phone, text } = req.body;
-  if (!phone || !text) return res.status(400).json({ error:'phone y text requeridos' });
-  if (!isReady)        return res.status(503).json({ error:'WhatsApp no conectado' });
+
+  if (req.headers['x-secret'] !== SECRET) {
+    return res.status(401).json({ error:'Unauthorized' });
+  }
+
+  let { phone, text } = req.body;
+
+  if (!phone || !text) {
+    return res.status(400).json({ error:'phone y text requeridos' });
+  }
+
+  if (!isReady) {
+    return res.status(503).json({ error:'WhatsApp no conectado' });
+  }
+
   try {
-    const jid = phone.includes('@') ? phone : `${phone}@s.whatsapp.net`;
+
+    // 🔧 LIMPIAR TELÉFONO (CLAVE)
+    phone = phone.replace(/\D/g, '');
+
+    const jid = `${phone}@s.whatsapp.net`;
+
+    // ═════════════════════════════
+    // 📤 ENVIAR A WHATSAPP
+    // ═════════════════════════════
     await sock.sendMessage(jid, { text });
+
+    // ═════════════════════════════
+    // 💾 GUARDAR EN MEMORIA LOCAL
+    // ═════════════════════════════
     if (!convs[phone]) convs[phone] = [];
-    convs[phone].push({ role:'human', text, time: new Date().toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'}) });
+
+    convs[phone].push({
+      role: 'human',
+      text,
+      time: new Date().toLocaleTimeString('es-CO', {
+        hour: '2-digit',
+        minute: '2-digit'
+      })
+    });
+
+    // ═════════════════════════════
+    // 🔁 ENVIAR AL WORKER (PARA FIRESTORE + IA)
+    // ═════════════════════════════
+    await fetch(`${WORKER}/wa`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-secret': SECRET
+      },
+      body: JSON.stringify({
+        from: phone,
+        text,
+        uid: 'KsdcPgU2sRcBJ2IZRpahNueKzdN2' // 👈 tu chatbot real
+      })
+    });
+
     res.json({ ok:true });
-  } catch(e) { res.status(500).json({ error:e.message }); }
+
+  } catch(e) {
+    res.status(500).json({ error:e.message });
+  }
+
 });
 
 app.delete('/conversations/:phone', (req, res) => {
