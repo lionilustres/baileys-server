@@ -65,36 +65,40 @@ async function startWA() {
 
     sock.ev.on('creds.update', saveCreds);
     
-    sock.ev.on('messages.upsert', async (event) => {
+    sock.ev.on('messages.upsert', async ({ messages, type }) => {
 
-  if (event.type !== 'notify') return;
+  if (type !== 'notify') return;
 
-  for (const msg of event.messages) {
-
-    // 🧪 DEBUG
-    console.log("🧪 RAW MSG:", JSON.stringify(msg, null, 2));
+  for (const msg of messages) {
 
     if (!msg.message || msg.key.fromMe) continue;
 
     const jid = msg.key.remoteJid;
     if (!jid) continue;
 
-    // 🔥 FIX — SOPORTA TODOS LOS TIPOS (lid, s.whatsapp, etc)
-    const phone = jid.split('@')[0];
+    // ✅ NORMALIZAR TELÉFONO (CLAVE)
+    let phone = jid.replace(/@.*$/, '');
 
+    // ❌ Ignorar grupos
+    if (jid.includes('@g.us')) continue;
+
+    // ✅ EXTRAER TEXTO (MEJORADO)
     const text =
       msg.message.conversation ||
       msg.message.extendedTextMessage?.text ||
       msg.message.imageMessage?.caption ||
-      msg.message.buttonsResponseMessage?.selectedDisplayText ||
-      msg.message.listResponseMessage?.title ||
+      msg.message.videoMessage?.caption ||
+      msg.message.documentMessage?.caption ||
       '';
 
-    if (!text) continue;
+    if (!text) {
+      console.log("⚠️ Mensaje sin texto, ignorado");
+      continue;
+    }
 
-    console.log("📩 WA:", phone, text);
+    console.log("📩 WA IN:", phone, text);
 
-    // ── GUARDAR USER ──
+    // ✅ GUARDAR LOCAL
     if (!convs[phone]) convs[phone] = [];
 
     convs[phone].push({
@@ -106,15 +110,22 @@ async function startWA() {
       })
     });
 
-    // ── ENVIAR AL WORKER ──
+    // 🔁 ENVIAR AL WORKER
     try {
+
+      const UID = "KsdcPgU2sRcBJ2IZRpahNueKzdN2";
+
       const res = await fetch(`${WORKER}/wa`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'x-secret': SECRET
         },
-        body: JSON.stringify({ from: phone, text })
+        body: JSON.stringify({
+          from: phone,
+          text,
+          uid: UID
+        })
       });
 
       const data = await res.json();
@@ -123,10 +134,8 @@ async function startWA() {
 
       if (data.reply) {
 
-        // RESPONDER EN WHATSAPP
         await sock.sendMessage(jid, { text: data.reply });
 
-        // GUARDAR RESPUESTA
         convs[phone].push({
           role: 'assistant',
           text: data.reply,
@@ -138,7 +147,7 @@ async function startWA() {
       }
 
     } catch (e) {
-      console.error("❌ Worker error:", e.message);
+      console.error("❌ Error enviando al worker:", e.message);
     }
   }
 });
