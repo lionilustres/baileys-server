@@ -212,7 +212,14 @@ app.post('/send', async (req, res) => {
   if (!phone || !text) return res.status(400).json({ error:'phone y text requeridos' });
   if (!isReady)        return res.status(503).json({ error:'WhatsApp no conectado' });
   try {
-    const jid = phone.includes('@') ? phone : `${phone}@s.whatsapp.net`;
+    // 🧼 LIMPIAR NÚMERO
+let clean = phone.replace(/\D/g, ''); // quita + espacios etc
+
+// ⚠️ quitar posibles sufijos raros
+clean = clean.replace(/@.*$/, '');
+
+// ✅ armar jid correcto SIEMPRE
+const jid = `${clean}@s.whatsapp.net`;
     await sock.sendMessage(jid, { text });
     if (!convs[phone]) convs[phone] = [];
     convs[phone].push({ role:'human', text, time: new Date().toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'}) });
