@@ -198,41 +198,42 @@ app.get('/conversations/:phone', (req, res) => {
 
 app.post('/send', async (req, res) => {
   if (req.headers['x-secret'] !== SECRET) return res.status(401).json({ error:'Unauthorized' });
+
   const { phone, text } = req.body;
 
-// 🔥 NORMALIZAR UNA SOLA VEZ
-const cleanPhone = phone.replace(/\D/g, '');
+  const cleanPhone = phone.replace(/\D/g, '');
 
-if (!cleanPhone || !text) {
-  return res.status(400).json({ error:'phone y text requeridos' });
-}
+  if (!cleanPhone || !text) {
+    return res.status(400).json({ error:'phone y text requeridos' });
+  }
 
-if (!isReady) {
-  return res.status(503).json({ error:'WhatsApp no conectado' });
-}
+  if (!isReady) {
+    return res.status(503).json({ error:'WhatsApp no conectado' });
+  }
 
-try {
-  // 🔥 USAR SIEMPRE EL MISMO FORMATO
-  const jid = `${cleanPhone}@s.whatsapp.net`;
+  try {
+    const jid = `${cleanPhone}@s.whatsapp.net`;
 
-  await sock.sendMessage(jid, { text });
+    await sock.sendMessage(jid, { text });
 
-  if (!convs[cleanPhone]) convs[cleanPhone] = [];
+    if (!convs[cleanPhone]) convs[cleanPhone] = [];
 
-  convs[cleanPhone].push({
-    role:'human',
-    text,
-    time: new Date().toLocaleTimeString('es-CO',{
-      hour:'2-digit',
-      minute:'2-digit'
-    })
-  });
+    convs[cleanPhone].push({
+      role:'human',
+      text,
+      time: new Date().toLocaleTimeString('es-CO',{
+        hour:'2-digit',
+        minute:'2-digit'
+      })
+    });
 
-  res.json({ ok:true });
+    res.json({ ok:true });
 
-} catch(e) {
-  res.status(500).json({ error:e.message });
-}
+  } catch(e) {
+    res.status(500).json({ error:e.message });
+  }
+
+}); 
 
 app.delete('/conversations/:phone', (req, res) => {
   if (req.headers['x-secret'] !== SECRET) return res.status(401).json({ error:'Unauthorized' });
