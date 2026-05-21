@@ -65,40 +65,36 @@ async function startWA() {
 
     sock.ev.on('creds.update', saveCreds);
     
-    sock.ev.on('messages.upsert', async ({ messages, type }) => {
+    sock.ev.on('messages.upsert', async (event) => {
 
-  if (type !== 'notify') return;
+  if (event.type !== 'notify') return;
 
-  for (const msg of messages) {
+  for (const msg of event.messages) {
+
+    // 🔍 DEBUG REAL
+    console.log("🧪 RAW MSG:", JSON.stringify(msg, null, 2));
 
     if (!msg.message || msg.key.fromMe) continue;
 
     const jid = msg.key.remoteJid;
     if (!jid) continue;
 
-    // ✅ NORMALIZAR TELÉFONO (CLAVE)
-    let phone = jid.replace(/@.*$/, '');
+    const phone = jid.replace('@s.whatsapp.net', '');
 
-    // ❌ Ignorar grupos
-    if (jid.includes('@g.us')) continue;
-
-    // ✅ EXTRAER TEXTO (MEJORADO)
     const text =
-      msg.message.conversation ||
-      msg.message.extendedTextMessage?.text ||
-      msg.message.imageMessage?.caption ||
-      msg.message.videoMessage?.caption ||
-      msg.message.documentMessage?.caption ||
+      msg.message?.conversation ||
+      msg.message?.extendedTextMessage?.text ||
+      msg.message?.imageMessage?.caption ||
+      msg.message?.videoMessage?.caption ||
+      msg.message?.buttonsResponseMessage?.selectedButtonId ||
+      msg.message?.listResponseMessage?.title ||
       '';
 
-    if (!text) {
-      console.log("⚠️ Mensaje sin texto, ignorado");
-      continue;
-    }
+    if (!text) continue;
 
-    console.log("📩 WA IN:", phone, text);
+    console.log("📩 WA:", phone, text);
 
-    // ✅ GUARDAR LOCAL
+    // ✅ guardar
     if (!convs[phone]) convs[phone] = [];
 
     convs[phone].push({
@@ -110,27 +106,20 @@ async function startWA() {
       })
     });
 
-    // 🔁 ENVIAR AL WORKER
+    console.log("📦 CONVS:", convs);
+
+    // 🔁 worker
     try {
-
-      const UID = "KsdcPgU2sRcBJ2IZRpahNueKzdN2";
-
       const res = await fetch(`${WORKER}/wa`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'x-secret': SECRET
         },
-        body: JSON.stringify({
-          from: phone,
-          text,
-          uid: UID
-        })
+        body: JSON.stringify({ from: phone, text })
       });
 
       const data = await res.json();
-
-      console.log("🤖 Worker responde:", data);
 
       if (data.reply) {
 
@@ -144,10 +133,11 @@ async function startWA() {
             minute: '2-digit'
           })
         });
+
       }
 
     } catch (e) {
-      console.error("❌ Error enviando al worker:", e.message);
+      console.error("Worker error:", e.message);
     }
   }
 });
@@ -212,14 +202,7 @@ app.post('/send', async (req, res) => {
   if (!phone || !text) return res.status(400).json({ error:'phone y text requeridos' });
   if (!isReady)        return res.status(503).json({ error:'WhatsApp no conectado' });
   try {
-    // 🧼 LIMPIAR NÚMERO
-let clean = phone.replace(/\D/g, ''); // quita + espacios etc
-
-// ⚠️ quitar posibles sufijos raros
-clean = clean.replace(/@.*$/, '');
-
-// ✅ armar jid correcto SIEMPRE
-const jid = `${clean}@s.whatsapp.net`;
+    const jid = phone.includes('@') ? phone : `${phone}@s.whatsapp.net`;
     await sock.sendMessage(jid, { text });
     if (!convs[phone]) convs[phone] = [];
     convs[phone].push({ role:'human', text, time: new Date().toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'}) });
