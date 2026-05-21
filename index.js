@@ -71,7 +71,7 @@ async function startWA() {
 
   for (const msg of event.messages) {
 
-    // 🔍 DEBUG REAL
+    // 🧪 DEBUG
     console.log("🧪 RAW MSG:", JSON.stringify(msg, null, 2));
 
     if (!msg.message || msg.key.fromMe) continue;
@@ -79,22 +79,22 @@ async function startWA() {
     const jid = msg.key.remoteJid;
     if (!jid) continue;
 
-    const phone = jid.replace('@s.whatsapp.net', '');
+    // 🔥 FIX — SOPORTA TODOS LOS TIPOS (lid, s.whatsapp, etc)
+    const phone = jid.split('@')[0];
 
     const text =
-      msg.message?.conversation ||
-      msg.message?.extendedTextMessage?.text ||
-      msg.message?.imageMessage?.caption ||
-      msg.message?.videoMessage?.caption ||
-      msg.message?.buttonsResponseMessage?.selectedButtonId ||
-      msg.message?.listResponseMessage?.title ||
+      msg.message.conversation ||
+      msg.message.extendedTextMessage?.text ||
+      msg.message.imageMessage?.caption ||
+      msg.message.buttonsResponseMessage?.selectedDisplayText ||
+      msg.message.listResponseMessage?.title ||
       '';
 
     if (!text) continue;
 
     console.log("📩 WA:", phone, text);
 
-    // ✅ guardar
+    // ── GUARDAR USER ──
     if (!convs[phone]) convs[phone] = [];
 
     convs[phone].push({
@@ -106,9 +106,7 @@ async function startWA() {
       })
     });
 
-    console.log("📦 CONVS:", convs);
-
-    // 🔁 worker
+    // ── ENVIAR AL WORKER ──
     try {
       const res = await fetch(`${WORKER}/wa`, {
         method: 'POST',
@@ -121,10 +119,14 @@ async function startWA() {
 
       const data = await res.json();
 
+      console.log("🤖 Worker responde:", data);
+
       if (data.reply) {
 
+        // RESPONDER EN WHATSAPP
         await sock.sendMessage(jid, { text: data.reply });
 
+        // GUARDAR RESPUESTA
         convs[phone].push({
           role: 'assistant',
           text: data.reply,
@@ -133,11 +135,10 @@ async function startWA() {
             minute: '2-digit'
           })
         });
-
       }
 
     } catch (e) {
-      console.error("Worker error:", e.message);
+      console.error("❌ Worker error:", e.message);
     }
   }
 });
