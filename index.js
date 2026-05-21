@@ -79,7 +79,8 @@ async function startWA() {
     const jid = msg.key.remoteJid;
     if (!jid) continue;
 
-    const phone = jid.replace('@s.whatsapp.net', '');
+      // 🔥 FIX — SOPORTA TODOS LOS TIPOS (lid, s.whatsapp, etc)
+    const phone = jid.split('@')[0];
 
     const text =
       msg.message?.conversation ||
