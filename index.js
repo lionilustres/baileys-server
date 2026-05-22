@@ -193,17 +193,24 @@ app.post('/reset', (req, res) => {
 
 app.get('/conversations', (req, res) => {
   if (req.headers['x-secret'] !== SECRET) return res.status(401).json({ error:'Unauthorized' });
-  const list = Object.entries(convs).map(([phone, msgs]) => ({
-    phone, msgCount: msgs.length,
-    lastMsg:  msgs[msgs.length-1]?.text?.substring(0,80) || '',
-    lastTime: msgs[msgs.length-1]?.time || ''
+
+  const list = Object.entries(convs).map(([phone, chat]) => ({
+    phone,
+    msgCount: chat.msgs.length,
+    lastMsg: chat.msgs[chat.msgs.length - 1]?.text?.substring(0, 80) || '',
+    lastTime: chat.msgs[chat.msgs.length - 1]?.time || ''
   }));
+
   res.json({ ok:true, conversations:list });
 });
 
 app.get('/conversations/:phone', (req, res) => {
   if (req.headers['x-secret'] !== SECRET) return res.status(401).json({ error:'Unauthorized' });
-  res.json({ ok:true, msgs: convs[req.params.phone] || [] });
+  const chat = convs[req.params.phone];
+
+res.json({
+  ok: true,
+  msgs: chat ? chat.msgs : []
 });
 
 app.post('/send', async (req, res) => {
