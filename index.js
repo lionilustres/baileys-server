@@ -161,54 +161,43 @@ app.get('/qr', (_, res) => {
 // RESET — limpia sesión corrupta
 app.post('/reset', (req, res) => {
   if (req.headers['x-secret'] !== SECRET) return res.status(401).json({ error:'Unauthorized' });
+  console.log('🔄 Reset solicitado');
   isReady = false; qrB64 = null;
   if (sock) { try { sock.end(); } catch(e) {} sock = null; }
   clearSession();
   setTimeout(startWA, 1000);
-  res.json({ ok:true, message:'Sesión limpiada — escanea /qr con número diferente al principal' });
+  res.json({ ok:true, message:'Sesión limpiada — escanea el QR en /qr' });
 });
- 
+
 app.get('/conversations', (req, res) => {
   if (req.headers['x-secret'] !== SECRET) return res.status(401).json({ error:'Unauthorized' });
-  const list = Object.entries(convs)
-    .map(([phone, msgs]) => ({
-      phone,
-      msgCount: msgs.length,
-      lastMsg:  msgs[msgs.length-1]?.text?.substring(0, 80) || '',
-      lastTime: msgs[msgs.length-1]?.time || ''
-    }))
-    .sort((a, b) => b.lastTime.localeCompare(a.lastTime));
-  res.json({ ok:true, conversations: list });
+  const list = Object.entries(convs).map(([phone, msgs]) => ({
+    phone, msgCount: msgs.length,
+    lastMsg:  msgs[msgs.length-1]?.text?.substring(0,80) || '',
+    lastTime: msgs[msgs.length-1]?.time || ''
+  }));
+  res.json({ ok:true, conversations:list });
 });
- 
+
 app.get('/conversations/:phone', (req, res) => {
   if (req.headers['x-secret'] !== SECRET) return res.status(401).json({ error:'Unauthorized' });
   res.json({ ok:true, msgs: convs[req.params.phone] || [] });
 });
- 
+
 app.post('/send', async (req, res) => {
   if (req.headers['x-secret'] !== SECRET) return res.status(401).json({ error:'Unauthorized' });
   const { phone, text } = req.body;
   if (!phone || !text) return res.status(400).json({ error:'phone y text requeridos' });
   if (!isReady)        return res.status(503).json({ error:'WhatsApp no conectado' });
   try {
-    // Limpiar número — solo dígitos
-    const cleanPhone = phone.replace(/\D/g, '');
-    const jid        = `${cleanPhone}@s.whatsapp.net`;
+    const jid = phone.includes('@') ? phone : `${phone}@s.whatsapp.net`;
     await sock.sendMessage(jid, { text });
-    if (!convs[cleanPhone]) convs[cleanPhone] = [];
-    convs[cleanPhone].push({
-      role: 'human', text,
-      time: new Date().toLocaleTimeString('es-CO', { hour:'2-digit', minute:'2-digit' })
-    });
-    console.log(`👤 Humano → ${cleanPhone}: ${text.substring(0,60)}`);
+    if (!convs[phone]) convs[phone] = [];
+    convs[phone].push({ role:'human', text, time: new Date().toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'}) });
     res.json({ ok:true });
-  } catch(e) {
-    console.error('send error:', e.message);
-    res.status(500).json({ error: e.message });
-  }
+  } catch(e) { res.status(500).json({ error:e.message }); }
 });
- 
+
 app.delete('/conversations/:phone', (req, res) => {
   if (req.headers['x-secret'] !== SECRET) return res.status(401).json({ error:'Unauthorized' });
   delete convs[req.params.phone];
