@@ -68,22 +68,36 @@ async function startWA() {
     sock.ev.on('messages.upsert', async (event) => {
 
   if (event.type !== 'notify') return;
-for (const msg of event.messages) {
 
-  if (!msg.message || msg.key.fromMe) continue;
+  for (const msg of event.messages) {
 
-  const jid = msg.key.remoteJid;
-  if (!jid) continue;
+    if (!msg.message || msg.key.fromMe) continue;
 
-  // ⛔ BLOQUEAR GRUPOS (IMPORTANTE)
-  if (jid.includes('@g.us')) {
-    console.log('⛔ Grupo ignorado:', jid);
-    continue;
-  }
+    const jid = msg.key.remoteJid;
+    if (!jid) continue;
 
-  const raw = jid.split('@')[0];
-  const phone = raw.replace(/\D/g, '');
-  
+    // ⛔ BLOQUEAR GRUPOS
+    if (jid.includes('@g.us')) {
+      console.log('⛔ Grupo ignorado:', jid);
+      continue;
+    }
+
+    // 🔥 NORMALIZAR TELÉFONO
+    const raw = jid.split('@')[0];
+    const phone = raw.replace(/\D/g, '');
+
+    // 🔥 CREAR ESTRUCTURA CORRECTA
+    if (!convs[phone]) {
+      convs[phone] = {
+        jid: jid,     // 👈 guardamos JID real
+        msgs: []
+      };
+    }
+
+    // 🔥 ACTUALIZAR JID (por si cambia @lid / @s.whatsapp.net)
+    convs[phone].jid = jid;
+
+
     const text =
         msg.message?.conversation ||
         msg.message?.extendedTextMessage?.text ||
@@ -199,28 +213,52 @@ app.get('/conversations/:phone', (req, res) => {
 });
 
 app.post('/send', async (req, res) => {
-  if (req.headers['x-secret'] !== SECRET) return res.status(401).json({ error:'Unauthorized' });
+  if (req.headers['x-secret'] !== SECRET) {
+    return res.status(401).json({ error:'Unauthorized' });
+  }
+
   const { phone, text } = req.body;
-  if (!phone || !text) return res.status(400).json({ error:'phone y text requeridos' });
-  if (!isReady)        return res.status(503).json({ error:'WhatsApp no conectado' });
+
+  if (!phone || !text) {
+    return res.status(400).json({ error:'phone y text requeridos' });
+  }
+
+  if (!isReady) {
+    return res.status(503).json({ error:'WhatsApp no conectado' });
+  }
+
   try {
     const cleanPhone = phone.replace(/\D/g, '');
-    const jid = `${cleanPhone}@s.whatsapp.net`;
+
+    // 🔥 BUSCAR CONVERSACIÓN REAL
+    const chat = convs[cleanPhone];
+
+    if (!chat || !chat.jid) {
+      return res.status(404).json({ error:'No existe conversación activa con ese número' });
+    }
+
+    const jid = chat.jid; // 👈 ESTE ES EL FIX CLAVE
 
     await sock.sendMessage(jid, { text });
 
-    if (!convs[cleanPhone]) convs[cleanPhone] = [];
+    // ✅ GUARDAR MENSAJE HUMANO
+    chat.msgs.push({
+      role: 'human',
+      text,
+      time: new Date().toLocaleTimeString('es-CO', {
+        hour:'2-digit',
+        minute:'2-digit'
+      })
+    });
 
-    convs[cleanPhone].push({
-    role:'human',
-    text,
-    time: new Date().toLocaleTimeString('es-CO',{
-    hour:'2-digit',
-    minute:'2-digit'
-  })
-});
+    console.log(`👤 Humano → ${cleanPhone}: ${text}`);
+
     res.json({ ok:true });
-  } catch(e) { res.status(500).json({ error:e.message }); }
+
+  } catch(e) {
+    console.error('send error:', e.message);
+    res.status(500).json({ error:e.message });
+  }
 });
 
 app.delete('/conversations/:phone', (req, res) => {
