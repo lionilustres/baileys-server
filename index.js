@@ -193,14 +193,12 @@ app.post('/reset', (req, res) => {
 
 app.get('/conversations', (req, res) => {
   if (req.headers['x-secret'] !== SECRET) return res.status(401).json({ error:'Unauthorized' });
-
   const list = Object.entries(convs).map(([phone, chat]) => ({
     phone,
     msgCount: chat.msgs.length,
     lastMsg: chat.msgs[chat.msgs.length - 1]?.text?.substring(0, 80) || '',
     lastTime: chat.msgs[chat.msgs.length - 1]?.time || ''
   }));
-
   res.json({ ok:true, conversations:list });
 });
 
