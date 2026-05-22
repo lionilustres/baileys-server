@@ -68,16 +68,22 @@ async function startWA() {
     sock.ev.on('messages.upsert', async (event) => {
 
   if (event.type !== 'notify') return;
+for (const msg of event.messages) {
 
-  for (const msg of event.messages) {
+  if (!msg.message || msg.key.fromMe) continue;
 
-    if (!msg.message || msg.key.fromMe) continue;
+  const jid = msg.key.remoteJid;
+  if (!jid) continue;
 
-    const jid = msg.key.remoteJid;
-    if (!jid) continue;
+  // ⛔ BLOQUEAR GRUPOS (IMPORTANTE)
+  if (jid.includes('@g.us')) {
+    console.log('⛔ Grupo ignorado:', jid);
+    continue;
+  }
 
-    const phone = jid.replace('@s.whatsapp.net', '');
-
+  const raw = jid.split('@')[0];
+  const phone = raw.replace(/\D/g, '');
+  
     const text =
         msg.message?.conversation ||
         msg.message?.extendedTextMessage?.text ||
@@ -198,10 +204,21 @@ app.post('/send', async (req, res) => {
   if (!phone || !text) return res.status(400).json({ error:'phone y text requeridos' });
   if (!isReady)        return res.status(503).json({ error:'WhatsApp no conectado' });
   try {
-    const jid = phone.includes('@') ? phone : `${phone}@s.whatsapp.net`;
+    const cleanPhone = phone.replace(/\D/g, '');
+    const jid = `${cleanPhone}@s.whatsapp.net`;
+
     await sock.sendMessage(jid, { text });
-    if (!convs[phone]) convs[phone] = [];
-    convs[phone].push({ role:'human', text, time: new Date().toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'}) });
+
+    if (!convs[cleanPhone]) convs[cleanPhone] = [];
+
+    convs[cleanPhone].push({
+    role:'human',
+    text,
+    time: new Date().toLocaleTimeString('es-CO',{
+    hour:'2-digit',
+    minute:'2-digit'
+  })
+});
     res.json({ ok:true });
   } catch(e) { res.status(500).json({ error:e.message }); }
 });
