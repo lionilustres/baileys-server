@@ -84,7 +84,7 @@ async function startWA() {
         msg.message?.imageMessage?.caption ||
         msg.message?.videoMessage?.caption ||
         '';
-        
+
     if (!text) continue;
 
     console.log("📩 WA:", phone, text);
@@ -151,8 +151,9 @@ app.get('/', (_, res) => res.json({ service:'BA WhatsApp Bridge', status: isRead
 app.get('/status', (_, res) => res.json({ ok:true, ready:isReady, hasQR:!!qrB64, convs:Object.keys(convs).length }));
 
 app.get('/qr', (_, res) => {
-  if (isReady) return res.send(`<!DOCTYPE html><link rel="icon" href="https://businessasesores.web.app/wp-content/uploads/2022/03/wp-icon-1.png" sizes="32x32">
-  <link rel="icon" href="https://businessasesores.web.app/wp-content/uploads/2022/03/wp-icon-1.png" sizes="192x192"><html><body style="font-family:sans-serif;text-align:center;padding:60px;background:#0a0a0f;color:#fff">
+  if (isReady) return res.send(`<!DOCTYPE html><html><body style="font-family:sans-serif;text-align:center;padding:60px;background:#0a0a0f;color:#fff">
+    <link rel="icon" href="https://businessasesores.web.app/wp-content/uploads/2022/03/wp-icon-1.png" sizes="32x32">
+    <link rel="icon" href="https://businessasesores.web.app/wp-content/uploads/2022/03/wp-icon-1.png" sizes="192x192">
     <h2 style="color:#4ade80">✅ WhatsApp Conectado</h2><p style="color:#9898b0">El bot está activo.</p>
     <script>setTimeout(()=>location.reload(),10000)</script></body></html>`);
   if (!qrB64) return res.send(`<!DOCTYPE html><html><body style="font-family:sans-serif;text-align:center;padding:60px;background:#0a0a0f;color:#fff">
