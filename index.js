@@ -203,13 +203,18 @@ app.get('/conversations', (req, res) => {
 });
 
 app.get('/conversations/:phone', (req, res) => {
-  if (req.headers['x-secret'] !== SECRET) return res.status(401).json({ error:'Unauthorized' });
+  if (req.headers['x-secret'] !== SECRET) {
+    return res.status(401).json({ error:'Unauthorized' });
+  }
+
   const chat = convs[req.params.phone];
 
-res.json({
-  ok: true,
-  msgs: chat ? chat.msgs : []
-});
+  res.json({
+    ok: true,
+    msgs: chat ? chat.msgs : []
+  });
+}); 
+
 
 app.post('/send', async (req, res) => {
   if (req.headers['x-secret'] !== SECRET) {
