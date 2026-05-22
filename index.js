@@ -3,27 +3,19 @@ import makeWASocket, {
   useMultiFileAuthState,
   fetchLatestBaileysVersion
 } from '@whiskeysockets/baileys';
-import express from 'express';
-import QRCode  from 'qrcode';
-import pino    from 'pino';
+import express  from 'express';
+import cors     from 'cors';
+import QRCode   from 'qrcode';
+import pino     from 'pino';
 import { rmSync, existsSync } from 'fs';
 
 const app      = express();
-const PORT     = process.env.PORT                || 3000;
-const WORKER   = process.env.WORKER              || 'https://chat.hostweb.workers.dev';
-const SECRET   = process.env.SECRET              || 'ba_secret_2026';
-const OWNER    = process.env.OWNER_UID           || '';
-const SELF_URL = process.env.RENDER_EXTERNAL_URL || `http://localhost:${PORT}`;
+const PORT     = process.env.PORT   || 3000;
+const WORKER = process.env.WORKER || 'https://chat.hostweb.workers.dev';
+const SECRET   = process.env.SECRET || 'ba_secret_2026';
 const AUTH_DIR = './auth';
 
-// ── CORS manual — permite x-secret desde cualquier origen ──
-app.use((req, res, next) => {
-  res.setHeader('Access-Control-Allow-Origin',  '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, DELETE, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, x-secret, Authorization');
-  if (req.method === 'OPTIONS') return res.status(204).end();
-  next();
-});
+app.use(cors());
 app.use(express.json());
 
 let sock    = null;
@@ -35,7 +27,7 @@ function clearSession() {
   try {
     if (existsSync(AUTH_DIR)) rmSync(AUTH_DIR, { recursive: true, force: true });
     console.log('🗑 Sesión limpiada');
-  } catch(e) { console.error('clearSession:', e.message); }
+  } catch(e) { console.error('clearSession error:', e.message); }
 }
 
 async function startWA() {
@@ -48,66 +40,64 @@ async function startWA() {
       auth:              state,
       logger:            pino({ level: 'silent' }),
       printQRInTerminal: false,
-      getMessage:        async () => ({ conversation: '' })
+      getMessage: async () => ({ conversation: '' }) // fix Bad MAC
     });
 
     sock.ev.on('connection.update', async ({ connection, lastDisconnect, qr }) => {
       if (qr) {
         qrB64   = await QRCode.toDataURL(qr);
         isReady = false;
-        console.log('📱 QR listo');
+        console.log('📱 QR listo — ve a /qr');
       }
       if (connection === 'open') {
         isReady = true;
         qrB64   = null;
-        console.log('🔥 CONECTADO REALMENTE A WHATSAPP');
-        }
+        console.log('✅ WhatsApp conectado');
+      }
       if (connection === 'close') {
         isReady = false;
         const code = lastDisconnect?.error?.output?.statusCode;
         console.log('❌ Desconectado, código:', code);
-        if (code === DisconnectReason.loggedOut || code === 401 || code === 515) {
-          clearSession();
-        }
+        if (code === DisconnectReason.loggedOut) clearSession();
         setTimeout(startWA, 3000);
       }
     });
 
     sock.ev.on('creds.update', saveCreds);
-
-    sock.ev.on('messages.upsert', async ({ messages, type }) => {
+    
+     sock.ev.on('messages.upsert', async ({ messages, type }) => {
       if (type !== 'notify') return;
-
+ 
       for (const msg of messages) {
         if (!msg.message || msg.key.fromMe) continue;
-
+ 
         const jid = msg.key.remoteJid;
         if (!jid) continue;
-
+ 
         // ✅ BLOQUEAR GRUPOS — solo chats privados
         if (!jid.endsWith('@s.whatsapp.net')) {
           console.log('⛔ Grupo ignorado:', jid);
           continue;
         }
-
+ 
         const phone = jid.replace('@s.whatsapp.net', '');
-
+ 
         const text =
           msg.message?.conversation                    ||
           msg.message?.extendedTextMessage?.text       ||
           msg.message?.imageMessage?.caption           ||
           msg.message?.videoMessage?.caption           || '';
-
+ 
         if (!text.trim()) continue;
-
+ 
         console.log(`📩 ${phone}: ${text.substring(0, 80)}`);
-
+ 
         if (!convs[phone]) convs[phone] = [];
         convs[phone].push({
           role: 'user', text,
           time: new Date().toLocaleTimeString('es-CO', { hour:'2-digit', minute:'2-digit' })
         });
-
+ 
         // Llamar Worker para respuesta IA
         try {
           const res = await fetch(`${WORKER}/wa`, {
@@ -115,15 +105,15 @@ async function startWA() {
             headers: { 'Content-Type': 'application/json', 'x-secret': SECRET },
             body:    JSON.stringify({ from: phone, text, token: OWNER })
           });
-
+ 
           if (!res.ok) {
             console.error('Worker status:', res.status);
             continue;
           }
-
+ 
           const data  = await res.json();
           const reply = data.reply || '';
-
+ 
           if (reply) {
             await sock.sendMessage(jid, { text: reply });
             convs[phone].push({
@@ -132,49 +122,43 @@ async function startWA() {
             });
             console.log(`🤖 → ${phone}: ${reply.substring(0, 60)}`);
           }
-
+ 
         } catch(e) {
           console.error('Worker error:', e.message);
         }
       }
     });
-
+ 
   } catch(e) {
     console.error('startWA error:', e.message);
     setTimeout(startWA, 5000);
   }
 }
 
+
 // ── RUTAS ─────────────────────────────────────────
 
-app.get('/', (_, res) => res.json({
-  service: 'BA WhatsApp Bridge',
-  status:  isReady ? 'connected' : 'disconnected',
-  worker:  WORKER
-}));
+app.get('/', (_, res) => res.json({ service:'BA WhatsApp Bridge', status: isReady?'connected':'disconnected' }));
 
-app.get('/status', (_, res) => res.json({
-  ok: true, ready: isReady, hasQR: !!qrB64,
-  convs: Object.keys(convs).length
-}));
+app.get('/status', (_, res) => res.json({ ok:true, ready:isReady, hasQR:!!qrB64, convs:Object.keys(convs).length }));
 
 app.get('/qr', (_, res) => {
   if (isReady) return res.send(`<!DOCTYPE html><html><body style="font-family:sans-serif;text-align:center;padding:60px;background:#0a0a0f;color:#fff">
-    <h2 style="color:#4ade80">✅ WhatsApp Conectado</h2>
-    <p style="color:#9898b0">El bot está activo y solo responde chats privados.</p>
+    <h2 style="color:#4ade80">✅ WhatsApp Conectado</h2><link rel="icon" href="https://businessasesores.web.app/wp-content/uploads/2022/03/wp-icon-1.png" sizes="32x32">
+    <link rel="icon" href="https://businessasesores.web.app/wp-content/uploads/2022/03/wp-icon-1.png" sizes="192x192"><p style="color:#9898b0">El bot está activo.</p>
     <script>setTimeout(()=>location.reload(),10000)</script></body></html>`);
   if (!qrB64) return res.send(`<!DOCTYPE html><html><body style="font-family:sans-serif;text-align:center;padding:60px;background:#0a0a0f;color:#fff">
-    <h2>⏳ Generando QR...</h2>
-    <script>setTimeout(()=>location.reload(),3000)</script></body></html>`);
+    <h2>⏳ Generando QR...</h2><script>setTimeout(()=>location.reload(),3000)</script></body></html>`);
   res.send(`<!DOCTYPE html><html><body style="font-family:sans-serif;text-align:center;padding:40px;background:#0a0a0f;color:#fff">
-    <h2 style="color:#25d366">📱 Escanea con WhatsApp</h2>
-    <p style="color:#ef4444;font-weight:700">⚠️ Usa un número DIFERENTE al de tu celular principal</p>
+    <h2 style="color:#5328ff">📱 Escanea con WhatsApp</h2><link rel="icon" href="https://businessasesores.web.app/wp-content/uploads/2022/03/wp-icon-1.png" sizes="32x32">
+    <link rel="icon" href="https://businessasesores.web.app/wp-content/uploads/2022/03/wp-icon-1.png" sizes="192x192">
     <p style="color:#9898b0">WhatsApp → ⋮ → Dispositivos vinculados → Vincular dispositivo</p>
-    <img src="${qrB64}" style="width:280px;border-radius:16px;margin:20px 0;border:4px solid #25d366">
-    <p style="color:#6b6b85;font-size:12px">Se actualiza automáticamente cada 25s</p>
-    <script>setTimeout(()=>location.reload(),10000)</script></body></html>`);
+    <img src="${qrB64}" style="width:260px;border-radius:16px;margin:20px 0;border:4px solid #5328ff">
+    <p style="color:#6b6b85;font-size:12px">Se actualiza automáticamente</p>
+    <script>setTimeout(()=>location.reload(),25000)</script></body></html>`);
 });
 
+// RESET — limpia sesión corrupta
 app.post('/reset', (req, res) => {
   if (req.headers['x-secret'] !== SECRET) return res.status(401).json({ error:'Unauthorized' });
   isReady = false; qrB64 = null;
@@ -183,7 +167,7 @@ app.post('/reset', (req, res) => {
   setTimeout(startWA, 1000);
   res.json({ ok:true, message:'Sesión limpiada — escanea /qr con número diferente al principal' });
 });
-
+ 
 app.get('/conversations', (req, res) => {
   if (req.headers['x-secret'] !== SECRET) return res.status(401).json({ error:'Unauthorized' });
   const list = Object.entries(convs)
@@ -196,12 +180,12 @@ app.get('/conversations', (req, res) => {
     .sort((a, b) => b.lastTime.localeCompare(a.lastTime));
   res.json({ ok:true, conversations: list });
 });
-
+ 
 app.get('/conversations/:phone', (req, res) => {
   if (req.headers['x-secret'] !== SECRET) return res.status(401).json({ error:'Unauthorized' });
   res.json({ ok:true, msgs: convs[req.params.phone] || [] });
 });
-
+ 
 app.post('/send', async (req, res) => {
   if (req.headers['x-secret'] !== SECRET) return res.status(401).json({ error:'Unauthorized' });
   const { phone, text } = req.body;
@@ -224,19 +208,17 @@ app.post('/send', async (req, res) => {
     res.status(500).json({ error: e.message });
   }
 });
-
+ 
 app.delete('/conversations/:phone', (req, res) => {
   if (req.headers['x-secret'] !== SECRET) return res.status(401).json({ error:'Unauthorized' });
   delete convs[req.params.phone];
   res.json({ ok:true });
 });
 
-// Keep-alive para Render Free
+// Mantener despierto — ping cada 14 minutos
+const RENDER_URL = process.env.RENDER_EXTERNAL_URL || `http://localhost:${PORT}`;
 setInterval(() => {
-  fetch(`${SELF_URL}/status`).catch(() => {});
+  fetch(`${RENDER_URL}/status`).catch(() => {});
 }, 14 * 60 * 1000);
 
-app.listen(PORT, () => {
-  console.log(`🚀 Puerto ${PORT} | Worker: ${WORKER}`);
-  startWA();
-});
+app.listen(PORT, () => { console.log(`🚀 Puerto ${PORT}`); startWA(); });
