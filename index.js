@@ -65,75 +65,83 @@ async function startWA() {
 
     sock.ev.on('creds.update', saveCreds);
     
-     sock.ev.on('messages.upsert', async ({ messages, type }) => {
-      if (type !== 'notify') return;
- 
-      for (const msg of messages) {
-        if (!msg.message || msg.key.fromMe) continue;
- 
-        const jid = msg.key.remoteJid;
-        if (!jid) continue;
- 
-        // ✅ BLOQUEAR GRUPOS — solo chats privados
-        if (!jid.endsWith('@s.whatsapp.net')) {
-          console.log('⛔ Grupo ignorado:', jid);
-          continue;
-        }
- 
-        const phone = jid.replace('@s.whatsapp.net', '');
- 
-        const text =
-          msg.message?.conversation                    ||
-          msg.message?.extendedTextMessage?.text       ||
-          msg.message?.imageMessage?.caption           ||
-          msg.message?.videoMessage?.caption           || '';
- 
-        if (!text.trim()) continue;
- 
-        console.log(`📩 ${phone}: ${text.substring(0, 80)}`);
- 
-        if (!convs[phone]) convs[phone] = [];
-        convs[phone].push({
-          role: 'user', text,
-          time: new Date().toLocaleTimeString('es-CO', { hour:'2-digit', minute:'2-digit' })
-        });
- 
-        // Llamar Worker para respuesta IA
-        try {
-          const res = await fetch(`${WORKER}/wa`, {
-            method:  'POST',
-            headers: { 'Content-Type': 'application/json', 'x-secret': SECRET },
-            body:    JSON.stringify({ from: phone, text, token: OWNER })
-          });
- 
-          if (!res.ok) {
-            console.error('Worker status:', res.status);
-            continue;
-          }
- 
-          const data  = await res.json();
-          const reply = data.reply || '';
- 
-          if (reply) {
-            await sock.sendMessage(jid, { text: reply });
-            convs[phone].push({
-              role: 'assistant', text: reply,
-              time: new Date().toLocaleTimeString('es-CO', { hour:'2-digit', minute:'2-digit' })
-            });
-            console.log(`🤖 → ${phone}: ${reply.substring(0, 60)}`);
-          }
- 
-        } catch(e) {
-          console.error('Worker error:', e.message);
-        }
-      }
+    sock.ev.on('messages.upsert', async (event) => {
+
+  if (event.type !== 'notify') return;
+
+  for (const msg of event.messages) {
+
+    if (!msg.message || msg.key.fromMe) continue;
+
+    const jid = msg.key.remoteJid;
+    if (!jid) continue;
+
+    const phone = jid.replace('@s.whatsapp.net', '');
+
+    const text =
+        msg.message?.conversation ||
+        msg.message?.extendedTextMessage?.text ||
+        msg.message?.imageMessage?.caption ||
+        msg.message?.videoMessage?.caption ||
+        '';
+        
+    if (!text) continue;
+
+    console.log("📩 WA:", phone, text);
+
+    // ✅ GUARDAR MENSAJE USUARIO
+    if (!convs[phone]) convs[phone] = [];
+
+    convs[phone].push({
+      role: 'user',
+      text,
+      time: new Date().toLocaleTimeString('es-CO', {
+        hour: '2-digit',
+        minute: '2-digit'
+      })
     });
- 
-  } catch(e) {
+
+    // 🔁 ENVÍA AL WORKER
+    try {
+      const res = await fetch(`${WORKER}/wa`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-secret': SECRET
+        },
+        body: JSON.stringify({ from: phone, text })
+      });
+
+      const data = await res.json();
+
+      if (data.reply) {
+
+        // ✅ RESPONDER EN WHATSAPP
+        await sock.sendMessage(jid, { text: data.reply });
+
+        // ✅ GUARDAR RESPUESTA IA
+        convs[phone].push({
+          role: 'assistant',
+          text: data.reply,
+          time: new Date().toLocaleTimeString('es-CO', {
+            hour: '2-digit',
+            minute: '2-digit'
+          })
+        });
+      }
+
+    } catch (e) {
+      console.error("Worker error:", e.message);
+    }
+  }
+});
+
+     } catch(e) {
     console.error('startWA error:', e.message);
     setTimeout(startWA, 5000);
   }
 }
+
 
 
 // ── RUTAS ─────────────────────────────────────────
