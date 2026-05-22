@@ -97,22 +97,19 @@ async function startWA() {
     // 🔥 ACTUALIZAR JID (por si cambia @lid / @s.whatsapp.net)
     convs[phone].jid = jid;
 
-
     const text =
-        msg.message?.conversation ||
-        msg.message?.extendedTextMessage?.text ||
-        msg.message?.imageMessage?.caption ||
-        msg.message?.videoMessage?.caption ||
-        '';
-        
+      msg.message?.conversation ||
+      msg.message?.extendedTextMessage?.text ||
+      msg.message?.imageMessage?.caption ||
+      msg.message?.videoMessage?.caption ||
+      '';
+
     if (!text) continue;
 
     console.log("📩 WA:", phone, text);
 
     // ✅ GUARDAR MENSAJE USUARIO
-    if (!convs[phone]) convs[phone] = [];
-
-    convs[phone].push({
+    convs[phone].msgs.push({
       role: 'user',
       text,
       time: new Date().toLocaleTimeString('es-CO', {
@@ -121,7 +118,7 @@ async function startWA() {
       })
     });
 
-    // 🔁 ENVÍA AL WORKER
+    // 🔁 ENVÍO AL WORKER
     try {
       const res = await fetch(`${WORKER}/wa`, {
         method: 'POST',
@@ -135,12 +132,9 @@ async function startWA() {
       const data = await res.json();
 
       if (data.reply) {
-
-        // ✅ RESPONDER EN WHATSAPP
         await sock.sendMessage(jid, { text: data.reply });
 
-        // ✅ GUARDAR RESPUESTA IA
-        convs[phone].push({
+        convs[phone].msgs.push({
           role: 'assistant',
           text: data.reply,
           time: new Date().toLocaleTimeString('es-CO', {
@@ -213,28 +207,52 @@ app.get('/conversations/:phone', (req, res) => {
 });
 
 app.post('/send', async (req, res) => {
-  if (req.headers['x-secret'] !== SECRET) return res.status(401).json({ error:'Unauthorized' });
+  if (req.headers['x-secret'] !== SECRET) {
+    return res.status(401).json({ error:'Unauthorized' });
+  }
+
   const { phone, text } = req.body;
-  if (!phone || !text) return res.status(400).json({ error:'phone y text requeridos' });
-  if (!isReady)        return res.status(503).json({ error:'WhatsApp no conectado' });
+
+  if (!phone || !text) {
+    return res.status(400).json({ error:'phone y text requeridos' });
+  }
+
+  if (!isReady) {
+    return res.status(503).json({ error:'WhatsApp no conectado' });
+  }
+
   try {
     const cleanPhone = phone.replace(/\D/g, '');
-    const jid = `${cleanPhone}@s.whatsapp.net`;
+
+    // 🔥 BUSCAR CONVERSACIÓN REAL
+    const chat = convs[cleanPhone];
+
+    if (!chat || !chat.jid) {
+      return res.status(404).json({ error:'No existe conversación activa con ese número' });
+    }
+
+    const jid = chat.jid; // 👈 ESTE ES EL FIX CLAVE
 
     await sock.sendMessage(jid, { text });
 
-    if (!convs[cleanPhone]) convs[cleanPhone] = [];
+    // ✅ GUARDAR MENSAJE HUMANO
+    chat.msgs.push({
+      role: 'human',
+      text,
+      time: new Date().toLocaleTimeString('es-CO', {
+        hour:'2-digit',
+        minute:'2-digit'
+      })
+    });
 
-    convs[cleanPhone].push({
-    role:'human',
-    text,
-    time: new Date().toLocaleTimeString('es-CO',{
-    hour:'2-digit',
-    minute:'2-digit'
-  })
-});
+    console.log(`👤 Humano → ${cleanPhone}: ${text}`);
+
     res.json({ ok:true });
-  } catch(e) { res.status(500).json({ error:e.message }); }
+
+  } catch(e) {
+    console.error('send error:', e.message);
+    res.status(500).json({ error:e.message });
+  }
 });
 
 app.delete('/conversations/:phone', (req, res) => {
