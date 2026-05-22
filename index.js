@@ -159,6 +159,8 @@ app.get('/qr', (_, res) => {
   if (!qrB64) return res.send(`<!DOCTYPE html><html><body style="font-family:sans-serif;text-align:center;padding:60px;background:#0a0a0f;color:#fff">
     <h2>⏳ Generando QR...</h2><script>setTimeout(()=>location.reload(),3000)</script></body></html>`);
   res.send(`<!DOCTYPE html><html><body style="font-family:sans-serif;text-align:center;padding:40px;background:#0a0a0f;color:#fff">
+    <link rel="icon" href="https://businessasesores.web.app/wp-content/uploads/2022/03/wp-icon-1.png" sizes="32x32">
+    <link rel="icon" href="https://businessasesores.web.app/wp-content/uploads/2022/03/wp-icon-1.png" sizes="192x192">
     <h2 style="color:#5328ff">📱 Escanea con WhatsApp</h2>
     <p style="color:#9898b0">WhatsApp → ⋮ → Dispositivos vinculados → Vincular dispositivo</p>
     <img src="${qrB64}" style="width:260px;border-radius:16px;margin:20px 0;border:4px solid #5328ff">
