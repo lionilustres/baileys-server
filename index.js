@@ -213,52 +213,28 @@ app.get('/conversations/:phone', (req, res) => {
 });
 
 app.post('/send', async (req, res) => {
-  if (req.headers['x-secret'] !== SECRET) {
-    return res.status(401).json({ error:'Unauthorized' });
-  }
-
+  if (req.headers['x-secret'] !== SECRET) return res.status(401).json({ error:'Unauthorized' });
   const { phone, text } = req.body;
-
-  if (!phone || !text) {
-    return res.status(400).json({ error:'phone y text requeridos' });
-  }
-
-  if (!isReady) {
-    return res.status(503).json({ error:'WhatsApp no conectado' });
-  }
-
+  if (!phone || !text) return res.status(400).json({ error:'phone y text requeridos' });
+  if (!isReady)        return res.status(503).json({ error:'WhatsApp no conectado' });
   try {
     const cleanPhone = phone.replace(/\D/g, '');
-
-    // 🔥 BUSCAR CONVERSACIÓN REAL
-    const chat = convs[cleanPhone];
-
-    if (!chat || !chat.jid) {
-      return res.status(404).json({ error:'No existe conversación activa con ese número' });
-    }
-
-    const jid = chat.jid; // 👈 ESTE ES EL FIX CLAVE
+    const jid = `${cleanPhone}@s.whatsapp.net`;
 
     await sock.sendMessage(jid, { text });
 
-    // ✅ GUARDAR MENSAJE HUMANO
-    chat.msgs.push({
-      role: 'human',
-      text,
-      time: new Date().toLocaleTimeString('es-CO', {
-        hour:'2-digit',
-        minute:'2-digit'
-      })
-    });
+    if (!convs[cleanPhone]) convs[cleanPhone] = [];
 
-    console.log(`👤 Humano → ${cleanPhone}: ${text}`);
-
+    convs[cleanPhone].push({
+    role:'human',
+    text,
+    time: new Date().toLocaleTimeString('es-CO',{
+    hour:'2-digit',
+    minute:'2-digit'
+  })
+});
     res.json({ ok:true });
-
-  } catch(e) {
-    console.error('send error:', e.message);
-    res.status(500).json({ error:e.message });
-  }
+  } catch(e) { res.status(500).json({ error:e.message }); }
 });
 
 app.delete('/conversations/:phone', (req, res) => {
