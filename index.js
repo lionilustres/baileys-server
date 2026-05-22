@@ -60,8 +60,8 @@ async function startWA() {
       if (connection === 'open') {
         isReady = true;
         qrB64   = null;
-        console.log('✅ WhatsApp conectado');
-      }
+        console.log('🔥 CONECTADO REALMENTE A WHATSAPP');
+        }
       if (connection === 'close') {
         isReady = false;
         const code = lastDisconnect?.error?.output?.statusCode;
@@ -172,7 +172,7 @@ app.get('/qr', (_, res) => {
     <p style="color:#9898b0">WhatsApp → ⋮ → Dispositivos vinculados → Vincular dispositivo</p>
     <img src="${qrB64}" style="width:280px;border-radius:16px;margin:20px 0;border:4px solid #25d366">
     <p style="color:#6b6b85;font-size:12px">Se actualiza automáticamente cada 25s</p>
-    <script>setTimeout(()=>location.reload(),25000)</script></body></html>`);
+    <script>setTimeout(()=>location.reload(),10000)</script></body></html>`);
 });
 
 app.post('/reset', (req, res) => {
