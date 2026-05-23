@@ -105,15 +105,14 @@ async function startWA() {
         const dataUID = await resUID.json();
         if (dataUID?.uid) uid = dataUID.uid;
 
+        // ✅ fallback correcto (sin bloquear)
+        if (!uid) uid = phone;
+
       } catch (e) {
         console.error('UID resolve error:', e.message);
       }
 
-      // ⛔ BLOQUEAR SI NO HAY UID
-      if (!uid) {
-        console.log("⛔ SIN UID → BLOQUEADO:", phone);
-        continue;
-      }
+    
 
       // 🔥 CREAR / ACTUALIZAR CONVERSACIÓN
       if (!convs[phone]) {
