@@ -192,6 +192,12 @@ async function startWA() {
   }
 });
 
+     } catch(e) {
+    console.error('startWA error:', e.message);
+    setTimeout(startWA, 5000);
+  }
+}
+
 
 
 // ── RUTAS ─────────────────────────────────────────
