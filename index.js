@@ -89,7 +89,7 @@ async function startWA() {
       const raw = jid.split('@')[0];
       const phone = raw.replace(/\D/g, '');
 
-      let uid = 'global';
+      let uid = convs[phone]?.uid || 'unknown';
 
       // 🔁 RESOLVER UID (con fallback seguro)
       try {
