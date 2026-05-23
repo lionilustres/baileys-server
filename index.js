@@ -89,33 +89,33 @@ async function startWA() {
       const raw = jid.split('@')[0];
       const phone = raw.replace(/\D/g, '');
 
+      // 🔥 UID
       let uid = convs[phone]?.uid || null;
 
-try {
-  const resUID = await fetch(`${WORKER}/resolve-uid`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-secret': SECRET
-    },
-    body: JSON.stringify({ phone })
-  });
+      try {
+        const resUID = await fetch(`${WORKER}/resolve-uid`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-secret': SECRET
+          },
+          body: JSON.stringify({ phone })
+        });
 
-  const dataUID = await resUID.json();
-  if (dataUID?.uid) uid = dataUID.uid;
-
-} catch (e) {}
-
-if (!uid) {
-  console.log("⛔ SIN UID → BLOQUEADO:", phone);
-  continue;
-}
+        const dataUID = await resUID.json();
+        if (dataUID?.uid) uid = dataUID.uid;
 
       } catch (e) {
         console.error('UID resolve error:', e.message);
       }
 
-      // 🔥 CREAR O ACTUALIZAR CONVERSACIÓN (SIEMPRE CONSISTENTE)
+      // ⛔ BLOQUEAR SI NO HAY UID
+      if (!uid) {
+        console.log("⛔ SIN UID → BLOQUEADO:", phone);
+        continue;
+      }
+
+      // 🔥 CREAR / ACTUALIZAR CONVERSACIÓN
       if (!convs[phone]) {
         convs[phone] = {
           jid,
@@ -138,7 +138,7 @@ if (!uid) {
 
       console.log("📩 WA:", phone, text);
 
-      // ✅ USER MSG
+      // ✅ GUARDAR USER
       convs[phone].msgs.push({
         role: 'user',
         text,
@@ -148,7 +148,7 @@ if (!uid) {
         })
       });
 
-      // 🔁 ENVIAR AL WORKER (con protección)
+      // 🔁 ENVIAR AL WORKER
       let data = null;
 
       try {
