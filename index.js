@@ -89,21 +89,27 @@ async function startWA() {
       const raw = jid.split('@')[0];
       const phone = raw.replace(/\D/g, '');
 
-      let uid = convs[phone]?.uid || 'unknown';
+      let uid = convs[phone]?.uid || null;
 
-      // 🔁 RESOLVER UID (con fallback seguro)
-      try {
-        const resUID = await fetch(`${WORKER}/resolve-uid`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'x-secret': SECRET
-          },
-          body: JSON.stringify({ phone })
-        });
+try {
+  const resUID = await fetch(`${WORKER}/resolve-uid`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-secret': SECRET
+    },
+    body: JSON.stringify({ phone })
+  });
 
-        const dataUID = await resUID.json();
-        if (dataUID?.uid) uid = dataUID.uid;
+  const dataUID = await resUID.json();
+  if (dataUID?.uid) uid = dataUID.uid;
+
+} catch (e) {}
+
+if (!uid) {
+  console.log("⛔ SIN UID → BLOQUEADO:", phone);
+  continue;
+}
 
       } catch (e) {
         console.error('UID resolve error:', e.message);
