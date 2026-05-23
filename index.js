@@ -130,7 +130,11 @@ async function startWA() {
           'Content-Type': 'application/json',
           'x-secret': SECRET
         },
-        body: JSON.stringify({ from: phone, text })
+        body: JSON.stringify({
+        from: phone,
+        text,
+        token: process.env.OWNER_UID || '' 
+       })
       });
 
       const data = await res.json();
