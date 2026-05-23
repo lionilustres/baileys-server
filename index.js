@@ -90,7 +90,7 @@ async function startWA() {
       const phone = raw.replace(/\D/g, '');
 
       // 🔥 UID
-      let uid = convs[phone]?.uid || null;
+      let uid = convs[phone]?.uid || phone;
 
       try {
         const resUID = await fetch(`${WORKER}/resolve-uid`, {
@@ -171,25 +171,25 @@ async function startWA() {
         continue;
       }
 
-      // 🤖 RESPUESTA BOT
-      if (data?.reply && isReady && sock) {
+     // 🤖 RESPUESTA BOT
+if (data?.reply && sock) {
 
-        try {
-          await sock.sendMessage(jid, { text: data.reply });
+  try {
+    await sock.sendMessage(jid, { text: data.reply });
 
-          convs[phone].msgs.push({
-            role: 'assistant',
-            text: data.reply,
-            time: new Date().toLocaleTimeString('es-CO', {
-              hour: '2-digit',
-              minute: '2-digit'
-            })
-          });
+    convs[phone].msgs.push({
+      role: 'assistant',
+      text: data.reply,
+      time: new Date().toLocaleTimeString('es-CO', {
+        hour: '2-digit',
+        minute: '2-digit'
+      })
+    });
 
-        } catch (e) {
-          console.error("Send error:", e.message);
-        }
-      }
+  } catch (e) {
+    console.error("Send error:", e.message);
+  }
+}
 
     } catch (e) {
       console.error("messages.upsert fatal:", e.message);
