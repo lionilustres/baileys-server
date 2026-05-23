@@ -90,16 +90,38 @@ async function startWA() {
     const raw = jid.split('@')[0];
     const phone = raw.replace(/\D/g, '');
 
-    // 🔥 CREAR ESTRUCTURA CORRECTA
+    // 🔥 OBTENER UID DESDE WORKER
+    let uid = 'global';
+
+    try {
+      const resUID = await fetch(`${WORKER}/resolve-uid`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-secret': SECRET
+        },
+        body: JSON.stringify({ phone })
+      });
+
+      const dataUID = await resUID.json();
+      if (dataUID.uid) uid = dataUID.uid;
+
+    } catch (e) {
+      console.error('UID resolve error:', e.message);
+    }
+
+    // 🔥 CREAR CONVERSACIÓN CON UID
     if (!convs[phone]) {
       convs[phone] = {
-        jid: jid,     // 👈 guardamos JID real
+        jid: jid,
+        uid: uid, // 👈 FIX CLAVE
         msgs: []
       };
     }
 
-    // 🔥 ACTUALIZAR JID (por si cambia @lid / @s.whatsapp.net)
+    // 🔥 ACTUALIZAR DATOS
     convs[phone].jid = jid;
+    convs[phone].uid = uid;
 
     const text =
       msg.message?.conversation ||
@@ -197,12 +219,15 @@ app.post('/reset', (req, res) => {
 
 app.get('/conversations', (req, res) => {
   if (req.headers['x-secret'] !== SECRET) return res.status(401).json({ error:'Unauthorized' });
+
   const list = Object.entries(convs).map(([phone, chat]) => ({
     phone,
+    uid: chat.uid, // 👈 FIX CLAVE
     msgCount: chat.msgs.length,
     lastMsg: chat.msgs[chat.msgs.length - 1]?.text?.substring(0, 80) || '',
     lastTime: chat.msgs[chat.msgs.length - 1]?.time || ''
   }));
+
   res.json({ ok:true, conversations:list });
 });
 
