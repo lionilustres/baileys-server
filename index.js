@@ -17,7 +17,7 @@ const AUTH_DIR = './auth';
 
 app.use(cors({
   origin: '*',
-  methods: ['GET','POST','DELETE'],
+  methods: ['GET','POST','OPTIONS'],
   allowedHeaders: ['Content-Type','x-secret']
 }));
 app.use(express.json());
