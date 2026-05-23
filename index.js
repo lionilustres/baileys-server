@@ -15,7 +15,11 @@ const WORKER = process.env.WORKER || 'https://chat.hostweb.workers.dev';
 const SECRET   = process.env.SECRET || 'ba_secret_2026';
 const AUTH_DIR = './auth';
 
-app.use(cors());
+app.use(cors({
+  origin: '*',
+  methods: ['GET','POST','DELETE'],
+  allowedHeaders: ['Content-Type','x-secret']
+}));
 app.use(express.json());
 
 let sock    = null;
