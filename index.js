@@ -8,6 +8,7 @@ import cors     from 'cors';
 import QRCode   from 'qrcode';
 import pino     from 'pino';
 import { rmSync, existsSync } from 'fs';
+const convs = {};
 
 const app      = express();
 const PORT     = process.env.PORT   || 3000;
@@ -211,7 +212,19 @@ if (data?.reply && sock) {
 
 app.get('/', (_, res) => res.json({ service:'BA WhatsApp Bridge', status: isReady?'connected':'disconnected' }));
 
-app.get('/status', (_, res) => res.json({ ok:true, ready:isReady, hasQR:!!qrB64, convs:Object.keys(convs).length }));
+app.get('/status', (_, res) => {
+  try {
+    res.json({
+      ok: true,
+      ready: isReady || false,
+      hasQR: !!qrB64,
+      convs: convs ? Object.keys(convs).length : 0
+    });
+  } catch (e) {
+    console.error('status error:', e.message);
+    res.json({ ok: false });
+  }
+});
 
 app.get('/qr', (_, res) => {
   if (isReady) return res.send(`<!DOCTYPE html><html><body style="font-family:sans-serif;text-align:center;padding:60px;background:#0a0a0f;color:#fff">
@@ -241,17 +254,30 @@ app.post('/reset', (req, res) => {
 });
 
 app.get('/conversations', (req, res) => {
-  if (req.headers['x-secret'] !== SECRET) return res.status(401).json({ error:'Unauthorized' });
+  try {
 
-  const list = Object.entries(convs).map(([phone, chat]) => ({
-    phone,
-    uid: chat.uid, // 👈 FIX CLAVE
-    msgCount: chat.msgs.length,
-    lastMsg: chat.msgs[chat.msgs.length - 1]?.text?.substring(0, 80) || '',
-    lastTime: chat.msgs[chat.msgs.length - 1]?.time || ''
-  }));
+    if (req.headers['x-secret'] !== SECRET) {
+      return res.status(401).json({ error:'Unauthorized' });
+    }
 
-  res.json({ ok:true, conversations:list });
+    if (!convs) {
+      return res.json({ ok:true, conversations: [] });
+    }
+
+    const list = Object.entries(convs).map(([phone, chat]) => ({
+      phone,
+      uid: chat?.uid || null,
+      msgCount: chat?.msgs?.length || 0,
+      lastMsg: chat?.msgs?.slice(-1)[0]?.text || '',
+      lastTime: chat?.msgs?.slice(-1)[0]?.time || ''
+    }));
+
+    res.json({ ok:true, conversations:list });
+
+  } catch (e) {
+    console.error('conversations error:', e.message);
+    res.json({ ok:false, conversations: [] });
+  }
 });
 
 app.get('/conversations/:phone', (req, res) => {
