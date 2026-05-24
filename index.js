@@ -19,7 +19,12 @@ const AUTH_DIR = './auth';
 app.use(cors({
   origin: '*',
   methods: ['GET','POST','OPTIONS'],
-  allowedHeaders: ['Content-Type','x-secret']
+  allowedHeaders: ['Content-Type', 'x-secret', 'x-uid']
+}));
+app.options('*', cors({
+  origin: '*',
+  methods: ['GET','POST','OPTIONS'],
+  allowedHeaders: ['Content-Type', 'x-secret', 'x-uid']
 }));
 app.use(express.json());
 
@@ -267,21 +272,29 @@ app.get('/conversations', (req, res) => {
   res.json({ ok:true, conversations:list });
 });
 
-app.get('/conversations/:phone', (req, res) => {
+app.get('/conversations', (req, res) => {
 
   if (req.headers['x-secret'] !== SECRET) {
     return res.status(401).json({ error:'Unauthorized' });
   }
 
   const uid = req.headers['x-uid'];
-  const phone = req.params.phone;
 
-  const chat = convs?.[uid]?.[phone];
+  if (!uid) {
+    return res.json({ ok:true, conversations: [] });
+  }
 
-  res.json({
-    ok: true,
-    msgs: chat ? chat.msgs : []
-  });
+  const userConvs = convs[uid] || {};
+
+  const list = Object.entries(userConvs).map(([phone, chat]) => ({
+    phone,
+    uid,
+    msgCount: chat.msgs.length,
+    lastMsg: chat.msgs.slice(-1)[0]?.text || '',
+    lastTime: chat.msgs.slice(-1)[0]?.time || ''
+  }));
+
+  res.json({ ok:true, conversations:list });
 });
 
 
