@@ -357,3 +357,8 @@ setInterval(() => {
 }, 14 * 60 * 1000);
 
 app.listen(PORT, () => { console.log(`🚀 Puerto ${PORT}`); startWA(); });
+
+app.get('/debug-clear', (_, res) => {
+  for (const k in convs) delete convs[k];
+  res.json({ ok:true });
+});
