@@ -21,11 +21,8 @@ app.use(cors({
   methods: ['GET','POST','OPTIONS'],
   allowedHeaders: ['Content-Type', 'x-secret', 'x-uid']
 }));
-app.options('*', cors({
-  origin: '*',
-  methods: ['GET','POST','OPTIONS'],
-  allowedHeaders: ['Content-Type', 'x-secret', 'x-uid']
-}));
+
+app.options('*', cors());
 app.use(express.json());
 
 
@@ -250,38 +247,13 @@ app.post('/reset', (req, res) => {
 app.get('/conversations', (req, res) => {
 
   if (req.headers['x-secret'] !== SECRET) {
-    return res.status(401).json({ error:'Unauthorized' });
+    return res.status(401).json({ error: 'Unauthorized' });
   }
 
   const uid = req.headers['x-uid'];
 
   if (!uid) {
-    return res.json({ ok:true, conversations: [] });
-  }
-
-  const userConvs = convs[uid] || {};
-
-  const list = Object.entries(userConvs).map(([phone, chat]) => ({
-  phone,
-  uid, // 🔥 ESTE ES EL FIX
-  msgCount: chat.msgs.length,
-  lastMsg: chat.msgs.slice(-1)[0]?.text || '',
-  lastTime: chat.msgs.slice(-1)[0]?.time || ''
-}));
-
-  res.json({ ok:true, conversations:list });
-});
-
-app.get('/conversations', (req, res) => {
-
-  if (req.headers['x-secret'] !== SECRET) {
-    return res.status(401).json({ error:'Unauthorized' });
-  }
-
-  const uid = req.headers['x-uid'];
-
-  if (!uid) {
-    return res.json({ ok:true, conversations: [] });
+    return res.json({ ok: true, conversations: [] });
   }
 
   const userConvs = convs[uid] || {};
@@ -290,63 +262,57 @@ app.get('/conversations', (req, res) => {
     phone,
     uid,
     msgCount: chat.msgs.length,
-    lastMsg: chat.msgs.slice(-1)[0]?.text || '',
-    lastTime: chat.msgs.slice(-1)[0]?.time || ''
+    lastMsg: chat.msgs.at(-1)?.text || '',
+    lastTime: chat.msgs.at(-1)?.time || ''
   }));
 
-  res.json({ ok:true, conversations:list });
+  res.json({ ok: true, conversations: list });
 });
 
 
 app.post('/send', async (req, res) => {
 
   if (req.headers['x-secret'] !== SECRET) {
-    return res.status(401).json({ error:'Unauthorized' });
+    return res.status(401).json({ error: 'Unauthorized' });
   }
 
   const uid = req.headers['x-uid'];
   const { phone, text } = req.body;
 
-  if (!uid) {
-    return res.status(400).json({ error:'uid requerido' });
-  }
-
-  if (!phone || !text) {
-    return res.status(400).json({ error:'phone y text requeridos' });
+  if (!uid || !phone || !text) {
+    return res.status(400).json({ error: 'uid, phone y text requeridos' });
   }
 
   if (!isReady) {
-    return res.status(503).json({ error:'WhatsApp no conectado' });
+    return res.status(503).json({ error: 'WhatsApp no conectado' });
+  }
+
+  const cleanPhone = phone.replace(/\D/g, '');
+  const chat = convs?.[uid]?.[cleanPhone];
+
+  if (!chat?.jid) {
+    return res.status(404).json({ error: 'No existe conversación' });
   }
 
   try {
-
-    const cleanPhone = phone.replace(/\D/g, '');
-
-    const chat = convs?.[uid]?.[cleanPhone];
-
-    if (!chat || !chat.jid) {
-      return res.status(404).json({ error:'No existe conversación activa' });
-    }
-
     await sock.sendMessage(chat.jid, { text });
 
     chat.msgs.push({
       role: 'human',
       text,
       time: new Date().toLocaleTimeString('es-CO', {
-        hour:'2-digit',
-        minute:'2-digit'
+        hour: '2-digit',
+        minute: '2-digit'
       })
     });
 
-    res.json({ ok:true });
+    res.json({ ok: true });
 
-  } catch(e){
-    console.error('send error:', e.message);
-    res.status(500).json({ error:e.message });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
   }
 });
+
 
 app.delete('/conversations/:phone', (req, res) => {
 
