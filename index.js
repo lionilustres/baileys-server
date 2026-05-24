@@ -80,7 +80,7 @@ async function startWA() {
 
   for (const msg of event.messages) {
     try {
-
+      console.log("🔥 RAW MSG:", JSON.stringify(msg, null, 2));
       if (!msg.message || msg.key.fromMe) continue;
 
       const jid = msg.key.remoteJid;
@@ -110,9 +110,8 @@ async function startWA() {
 
       // 🔴 SI NO HAY UID → NO PROCESA
       if (!uid) {
-        console.log("⛔ SIN UID:", phone);
-        continue;
-      }
+      uid = "debug";
+       }
 
       // 🔥 AISLAMIENTO REAL POR USUARIO
       if (!convs[uid]) convs[uid] = {};
@@ -172,8 +171,9 @@ async function startWA() {
       }
 
       // 🤖 responder
-      if (data?.reply && sock) {
-        await sock.sendMessage(jid, { text: data.reply });
+      if (sock && data && (data.reply || data.text)) {
+      const msg = data.reply || data.text;
+      await sock.sendMessage(jid, { text: msg });
 
         convs[uid][phone].msgs.push({
           role: 'assistant',
@@ -290,9 +290,13 @@ app.post('/send', async (req, res) => {
   const cleanPhone = phone.replace(/\D/g, '');
   const chat = convs?.[uid]?.[cleanPhone];
 
-  if (!chat?.jid) {
-    return res.status(404).json({ error: 'No existe conversación' });
-  }
+  if (!chat) {
+  convs[uid] = convs[uid] || {};
+  convs[uid][cleanPhone] = {
+    jid: `${cleanPhone}@s.whatsapp.net`,
+    msgs: []
+  };
+}
 
   try {
     await sock.sendMessage(chat.jid, { text });
