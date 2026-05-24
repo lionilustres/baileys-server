@@ -22,10 +22,10 @@ app.use(cors({
 }));
 app.use(express.json());
 
-let sock    = null;
+
 let qrB64   = null;
 let isReady = false;
-const convs = {};
+
 
 function clearSession() {
   try {
@@ -105,9 +105,10 @@ async function startWA() {
         const dataUID = await resUID.json();
         if (dataUID?.uid) uid = dataUID.uid;
 
-        if (!uid) {
-          console.log("⛔ SIN UID → NO se guarda:", phone);
-         }
+       if (!uid) {
+       console.log("⛔ SIN UID → IGNORADO:", phone);
+       continue; // 🔥 ESTA LÍNEA ES LA CLAVE
+       }
 
       } catch (e) {
         console.error('UID resolve error:', e.message);
@@ -159,10 +160,10 @@ async function startWA() {
             'x-secret': SECRET
           },
           body: JSON.stringify({
-          from: phone,
-          text,
-          uid: uid || null
-          })
+        from: phone,
+        text,
+        uid
+        })
         });
 
         data = await res.json();
