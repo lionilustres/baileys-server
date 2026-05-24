@@ -257,11 +257,12 @@ app.get('/conversations', (req, res) => {
   const userConvs = convs[uid] || {};
 
   const list = Object.entries(userConvs).map(([phone, chat]) => ({
-    phone,
-    msgCount: chat.msgs.length,
-    lastMsg: chat.msgs.slice(-1)[0]?.text || '',
-    lastTime: chat.msgs.slice(-1)[0]?.time || ''
-  }));
+  phone,
+  uid, // 🔥 ESTE ES EL FIX
+  msgCount: chat.msgs.length,
+  lastMsg: chat.msgs.slice(-1)[0]?.text || '',
+  lastTime: chat.msgs.slice(-1)[0]?.time || ''
+}));
 
   res.json({ ok:true, conversations:list });
 });
@@ -309,6 +310,7 @@ app.post('/send', async (req, res) => {
 
     const cleanPhone = phone.replace(/\D/g, '');
 
+    const uid = req.headers['x-uid'];
     const chat = convs?.[uid]?.[cleanPhone];
 
     if (!chat || !chat.jid) {
