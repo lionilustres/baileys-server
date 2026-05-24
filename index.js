@@ -323,7 +323,6 @@ app.post('/send', async (req, res) => {
 
     const cleanPhone = phone.replace(/\D/g, '');
 
-    const uid = req.headers['x-uid'];
     const chat = convs?.[uid]?.[cleanPhone];
 
     if (!chat || !chat.jid) {
