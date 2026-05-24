@@ -90,7 +90,7 @@ async function startWA() {
       const phone = raw.replace(/\D/g, '');
 
       // 🔥 UID
-      let uid = convs[phone]?.uid || phone;
+      let uid = convs[phone]?.uid || null;
 
       try {
         const resUID = await fetch(`${WORKER}/resolve-uid`, {
@@ -105,8 +105,9 @@ async function startWA() {
         const dataUID = await resUID.json();
         if (dataUID?.uid) uid = dataUID.uid;
 
-        // ✅ fallback correcto (sin bloquear)
-        if (!uid) uid = phone;
+        if (!uid) {
+          console.log("⛔ SIN UID → NO se guarda:", phone);
+         }
 
       } catch (e) {
         console.error('UID resolve error:', e.message);
@@ -158,9 +159,9 @@ async function startWA() {
             'x-secret': SECRET
           },
           body: JSON.stringify({
-            from: phone,
-            text,
-            uid
+          from: phone,
+          text,
+          uid: uid || null
           })
         });
 
