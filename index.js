@@ -24,7 +24,8 @@ app.use(cors({
 app.use(express.json());
 
 
-let qrB64   = null;
+let sock = null;
+let qrB64 = null;
 let isReady = false;
 
 
@@ -283,11 +284,17 @@ app.get('/conversations/:phone', (req, res) => {
 
 
 app.post('/send', async (req, res) => {
+
   if (req.headers['x-secret'] !== SECRET) {
     return res.status(401).json({ error:'Unauthorized' });
   }
 
+  const uid = req.headers['x-uid'];
   const { phone, text } = req.body;
+
+  if (!uid) {
+    return res.status(400).json({ error:'uid requerido' });
+  }
 
   if (!phone || !text) {
     return res.status(400).json({ error:'phone y text requeridos' });
@@ -298,20 +305,17 @@ app.post('/send', async (req, res) => {
   }
 
   try {
+
     const cleanPhone = phone.replace(/\D/g, '');
 
-    // 🔥 BUSCAR CONVERSACIÓN REAL
-    const chat = convs[cleanPhone];
+    const chat = convs?.[uid]?.[cleanPhone];
 
     if (!chat || !chat.jid) {
-      return res.status(404).json({ error:'No existe conversación activa con ese número' });
+      return res.status(404).json({ error:'No existe conversación activa' });
     }
 
-    const jid = chat.jid; // 👈 ESTE ES EL FIX CLAVE
+    await sock.sendMessage(chat.jid, { text });
 
-    await sock.sendMessage(jid, { text });
-
-    // ✅ GUARDAR MENSAJE HUMANO
     chat.msgs.push({
       role: 'human',
       text,
@@ -321,11 +325,9 @@ app.post('/send', async (req, res) => {
       })
     });
 
-    console.log(`👤 Humano → ${cleanPhone}: ${text}`);
-
     res.json({ ok:true });
 
-  } catch(e) {
+  } catch(e){
     console.error('send error:', e.message);
     res.status(500).json({ error:e.message });
   }
