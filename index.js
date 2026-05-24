@@ -8,7 +8,7 @@ import cors     from 'cors';
 import QRCode   from 'qrcode';
 import pino     from 'pino';
 import { rmSync, existsSync } from 'fs';
-const convs = {};
+
 
 const app      = express();
 const PORT     = process.env.PORT   || 3000;
@@ -25,6 +25,7 @@ app.use(express.json());
 
 
 let sock = null;
+const convs = {};
 let qrB64 = null;
 let isReady = false;
 
@@ -334,8 +335,18 @@ app.post('/send', async (req, res) => {
 });
 
 app.delete('/conversations/:phone', (req, res) => {
-  if (req.headers['x-secret'] !== SECRET) return res.status(401).json({ error:'Unauthorized' });
-  delete convs[req.params.phone];
+
+  if (req.headers['x-secret'] !== SECRET) {
+    return res.status(401).json({ error:'Unauthorized' });
+  }
+
+  const uid = req.headers['x-uid'];
+  const phone = req.params.phone;
+
+  if (convs?.[uid]?.[phone]) {
+    delete convs[uid][phone];
+  }
+
   res.json({ ok:true });
 });
 
