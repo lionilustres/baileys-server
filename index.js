@@ -133,7 +133,7 @@ async function startWA() {
         body: JSON.stringify({
         from: phone,
       text,
-      uid:
+      uid: phone // 🔥 TEMPORAL: usar phone como uid para probar
        })
       });
 
