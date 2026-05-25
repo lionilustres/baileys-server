@@ -71,129 +71,85 @@ async function startWA() {
     
     sock.ev.on('messages.upsert', async (event) => {
 
-  if (!event.messages) return;
+  if (event.type !== 'notify') return;
 
   for (const msg of event.messages) {
 
+    if (!msg.message || msg.key.fromMe) continue;
+
+    const jid = msg.key.remoteJid;
+    if (!jid) continue;
+
+    // ⛔ BLOQUEAR GRUPOS
+    if (jid.includes('@g.us')) {
+      console.log('⛔ Grupo ignorado:', jid);
+      continue;
+    }
+
+    // 🔥 NORMALIZAR TELÉFONO
+    const raw = jid.split('@')[0];
+    const phone = raw.replace(/\D/g, '');
+
+    // 🔥 CREAR ESTRUCTURA CORRECTA
+    if (!convs[phone]) {
+      convs[phone] = {
+        jid: jid,     // 👈 guardamos JID real
+        msgs: []
+      };
+    }
+
+    // 🔥 ACTUALIZAR JID (por si cambia @lid / @s.whatsapp.net)
+    convs[phone].jid = jid;
+
+    const text =
+      msg.message?.conversation ||
+      msg.message?.extendedTextMessage?.text ||
+      msg.message?.imageMessage?.caption ||
+      msg.message?.videoMessage?.caption ||
+      '';
+
+    if (!text) continue;
+
+    console.log("📩 WA:", phone, text);
+
+    // ✅ GUARDAR MENSAJE USUARIO
+    convs[phone].msgs.push({
+      role: 'user',
+      text,
+      time: new Date().toLocaleTimeString('es-CO', {
+        hour: '2-digit',
+        minute: '2-digit'
+      })
+    });
+
+    // 🔁 ENVÍO AL WORKER
     try {
-
-      if (!msg.message || msg.key.fromMe) continue;
-
-      const jid = msg.key.remoteJid;
-      if (!jid) continue;
-
-      // ⛔ BLOQUEAR GRUPOS
-      if (jid.includes('@g.us')) continue;
-
-      // 🔥 NORMALIZAR TELÉFONO
-      const raw = jid.split('@')[0];
-      const phone = raw.replace(/\D/g, '');
-
-      let uid = convs[phone]?.uid || null;
-
-try {
-  const resUID = await fetch(`${WORKER}/resolve-uid`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-secret': SECRET
-    },
-    body: JSON.stringify({ phone })
-  });
-
-  const dataUID = await resUID.json();
-  if (dataUID?.uid) uid = dataUID.uid;
-
-} catch (e) {}
-
-if (!uid) {
-  console.log("⛔ SIN UID → BLOQUEADO:", phone);
-  continue;
-}
-
-      } catch (e) {
-        console.error('UID resolve error:', e.message);
-      }
-
-      // 🔥 CREAR O ACTUALIZAR CONVERSACIÓN (SIEMPRE CONSISTENTE)
-      if (!convs[phone]) {
-        convs[phone] = {
-          jid,
-          uid,
-          msgs: []
-        };
-      } else {
-        convs[phone].jid = jid;
-        convs[phone].uid = uid;
-      }
-
-      const text =
-        msg.message?.conversation ||
-        msg.message?.extendedTextMessage?.text ||
-        msg.message?.imageMessage?.caption ||
-        msg.message?.videoMessage?.caption ||
-        '';
-
-      if (!text) continue;
-
-      console.log("📩 WA:", phone, text);
-
-      // ✅ USER MSG
-      convs[phone].msgs.push({
-        role: 'user',
-        text,
-        time: new Date().toLocaleTimeString('es-CO', {
-          hour: '2-digit',
-          minute: '2-digit'
-        })
+      const res = await fetch(`${WORKER}/wa`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-secret': SECRET
+        },
+        body: JSON.stringify({ from: phone, text })
       });
 
-      // 🔁 ENVIAR AL WORKER (con protección)
-      let data = null;
+      const data = await res.json();
 
-      try {
-        const res = await fetch(`${WORKER}/wa`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'x-secret': SECRET
-          },
-          body: JSON.stringify({
-            from: phone,
-            text,
-            uid
+      if (data.reply) {
+        await sock.sendMessage(jid, { text: data.reply });
+
+        convs[phone].msgs.push({
+          role: 'assistant',
+          text: data.reply,
+          time: new Date().toLocaleTimeString('es-CO', {
+            hour: '2-digit',
+            minute: '2-digit'
           })
         });
-
-        data = await res.json();
-
-      } catch (e) {
-        console.error("Worker error:", e.message);
-        continue;
-      }
-
-      // 🤖 RESPUESTA BOT
-      if (data?.reply && isReady && sock) {
-
-        try {
-          await sock.sendMessage(jid, { text: data.reply });
-
-          convs[phone].msgs.push({
-            role: 'assistant',
-            text: data.reply,
-            time: new Date().toLocaleTimeString('es-CO', {
-              hour: '2-digit',
-              minute: '2-digit'
-            })
-          });
-
-        } catch (e) {
-          console.error("Send error:", e.message);
-        }
       }
 
     } catch (e) {
-      console.error("messages.upsert fatal:", e.message);
+      console.error("Worker error:", e.message);
     }
   }
 });
@@ -241,15 +197,12 @@ app.post('/reset', (req, res) => {
 
 app.get('/conversations', (req, res) => {
   if (req.headers['x-secret'] !== SECRET) return res.status(401).json({ error:'Unauthorized' });
-
   const list = Object.entries(convs).map(([phone, chat]) => ({
     phone,
-    uid: chat.uid, // 👈 FIX CLAVE
     msgCount: chat.msgs.length,
     lastMsg: chat.msgs[chat.msgs.length - 1]?.text?.substring(0, 80) || '',
     lastTime: chat.msgs[chat.msgs.length - 1]?.time || ''
   }));
-
   res.json({ ok:true, conversations:list });
 });
 
