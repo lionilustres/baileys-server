@@ -269,6 +269,31 @@ app.get('/conversations', (req, res) => {
   res.json({ ok: true, conversations: list });
 });
 
+app.get('/conversations/:phone', (req, res) => {
+
+  if (req.headers['x-secret'] !== SECRET) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+
+  const uid = req.headers['x-uid'];
+  const phone = req.params.phone;
+
+  if (!uid) {
+    return res.json({ ok: true, msgs: [] });
+  }
+
+  const chat = convs?.[uid]?.[phone];
+
+  if (!chat) {
+    return res.json({ ok: true, msgs: [] });
+  }
+
+  res.json({
+    ok: true,
+    msgs: chat.msgs || []
+  });
+});
+
 
 app.post('/send', async (req, res) => {
 
@@ -317,22 +342,6 @@ app.post('/send', async (req, res) => {
   }
 });
 
-
-app.delete('/conversations/:phone', (req, res) => {
-
-  if (req.headers['x-secret'] !== SECRET) {
-    return res.status(401).json({ error:'Unauthorized' });
-  }
-
-  const uid = req.headers['x-uid'];
-  const phone = req.params.phone;
-
-  if (convs?.[uid]?.[phone]) {
-    delete convs[uid][phone];
-  }
-
-  res.json({ ok:true });
-});
 
 // Mantener despierto — ping cada 14 minutos
 const RENDER_URL = process.env.RENDER_EXTERNAL_URL || `http://localhost:${PORT}`;
