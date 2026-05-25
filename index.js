@@ -130,7 +130,11 @@ async function startWA() {
           'Content-Type': 'application/json',
           'x-secret': SECRET
         },
-        body: JSON.stringify({ from: phone, text })
+        body: JSON.stringify({
+        from: phone,
+      text,
+      uid: phone // 🔥 TEMPORAL: usar phone como uid para probar
+       })
       });
 
       const data = await res.json();
