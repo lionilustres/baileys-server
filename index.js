@@ -108,9 +108,9 @@ async function startWA() {
         console.error('UID error:', e.message);
       }
 
-      // 🔴 SI NO HAY UID → NO PROCESA
       if (!uid) {
-      uid = "debug";
+      console.log("❌ SIN UID → mensaje ignorado", phone);
+      continue;
        }
 
       // 🔥 AISLAMIENTO REAL POR USUARIO
@@ -205,12 +205,15 @@ app.get('/', (_, res) => res.json({ service:'BA WhatsApp Bridge', status: isRead
 
 app.get('/status', (_, res) => {
   try {
-    res.json({
-      ok: true,
-      ready: isReady || false,
-      hasQR: !!qrB64,
-      convs: convs ? Object.keys(convs).length : 0
-    });
+    const totalConvs = Object.values(convs).reduce((acc, u) => acc + Object.keys(u).length, 0);
+
+res.json({
+  ok: true,
+  ready: isReady || false,
+  hasQR: !!qrB64,
+  convs: totalConvs
+});
+
   } catch (e) {
     console.error('status error:', e.message);
     res.json({ ok: false });
