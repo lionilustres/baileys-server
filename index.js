@@ -3,123 +3,221 @@ import makeWASocket, {
   useMultiFileAuthState,
   fetchLatestBaileysVersion
 } from '@whiskeysockets/baileys';
-
-import express from 'express';
-import cors from 'cors';
-import QRCode from 'qrcode';
-import pino from 'pino';
+import express  from 'express';
+import cors     from 'cors';
+import QRCode   from 'qrcode';
+import pino     from 'pino';
 import { rmSync, existsSync } from 'fs';
 
-const app = express();
-const PORT = 3000;
+
+const app      = express();
+const PORT     = process.env.PORT   || 3000;
+const WORKER = process.env.WORKER || 'https://chat.hostweb.workers.dev';
+const SECRET   = process.env.SECRET || 'ba_secret_2026';
 const AUTH_DIR = './auth';
 
-// 🔴 SIN WORKER (para que funcione YA)
-const SECRET = 'ba_secret_2026';
-
-app.use(cors());
+app.use(cors({
+  origin: '*',
+  methods: ['GET','POST','OPTIONS'],
+  allowedHeaders: ['Content-Type', 'x-secret', 'x-uid']
+}));
+app.options('*', cors({
+  origin: '*',
+  methods: ['GET','POST','OPTIONS'],
+  allowedHeaders: ['Content-Type', 'x-secret', 'x-uid']
+}));
 app.use(express.json());
 
+
 let sock = null;
+const convs = {};
 let qrB64 = null;
 let isReady = false;
 
-// 🔥 conversaciones reales
-const convs = {};
 
-// ───────────────────────────────
 function clearSession() {
-  if (existsSync(AUTH_DIR)) {
-    rmSync(AUTH_DIR, { recursive: true, force: true });
-  }
+  try {
+    if (existsSync(AUTH_DIR)) rmSync(AUTH_DIR, { recursive: true, force: true });
+    console.log('🗑 Sesión limpiada');
+  } catch(e) { console.error('clearSession error:', e.message); }
 }
 
-// ───────────────────────────────
 async function startWA() {
-  const { state, saveCreds } = await useMultiFileAuthState(AUTH_DIR);
-  const { version } = await fetchLatestBaileysVersion();
+  try {
+    const { state, saveCreds } = await useMultiFileAuthState(AUTH_DIR);
+    const { version }          = await fetchLatestBaileysVersion();
 
-  sock = makeWASocket({
-    version,
-    auth: state,
-    logger: pino({ level: 'silent' }),
-    printQRInTerminal: false
-  });
+    sock = makeWASocket({
+      version,
+      auth:              state,
+      logger:            pino({ level: 'silent' }),
+      printQRInTerminal: false,
+      getMessage: async () => ({ conversation: '' }) // fix Bad MAC
+    });
 
-  sock.ev.on('connection.update', async ({ connection, qr }) => {
-    if (qr) {
-      qrB64 = await QRCode.toDataURL(qr);
-      isReady = false;
-      console.log('📱 QR listo');
-    }
+    sock.ev.on('connection.update', async ({ connection, lastDisconnect, qr }) => {
+      if (qr) {
+        qrB64   = await QRCode.toDataURL(qr);
+        isReady = false;
+        console.log('📱 QR listo — ve a /qr');
+      }
+      if (connection === 'open') {
+        isReady = true;
+        qrB64   = null;
+        console.log('✅ WhatsApp conectado');
+      }
+      if (connection === 'close') {
+        isReady = false;
+        const code = lastDisconnect?.error?.output?.statusCode;
+        console.log('❌ Desconectado, código:', code);
+        if (code === DisconnectReason.loggedOut) clearSession();
+        setTimeout(startWA, 3000);
+      }
+    });
 
-    if (connection === 'open') {
-      isReady = true;
-      qrB64 = null;
-      console.log('✅ WA conectado');
-    }
+    sock.ev.on('creds.update', saveCreds);
+    
+    sock.ev.on('messages.upsert', async (event) => {
 
-    if (connection === 'close') {
-      isReady = false;
-      setTimeout(startWA, 3000);
-    }
-  });
+  if (!event.messages) return;
 
-  sock.ev.on('creds.update', saveCreds);
+  for (const msg of event.messages) {
+    try {
 
-  // 🔥 MENSAJES
-  sock.ev.on('messages.upsert', async ({ messages }) => {
-    if (!messages) return;
-
-    for (const msg of messages) {
       if (!msg.message || msg.key.fromMe) continue;
 
       const jid = msg.key.remoteJid;
       if (!jid || jid.includes('@g.us')) continue;
 
-      const phone = jid.split('@')[0];
+      const phone = jid.split('@')[0].replace(/\D/g, '');
+
+      // 🔥 UID (obligatorio)
+      let uid = null;
+
+      try {
+        const resUID = await fetch(`${WORKER}/resolve-uid`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-secret': SECRET
+          },
+          body: JSON.stringify({ phone })
+        });
+
+        const dataUID = await resUID.json();
+        if (dataUID?.uid) uid = dataUID.uid;
+
+      } catch (e) {
+        console.error('UID error:', e.message);
+      }
+
+      // 🔴 SI NO HAY UID → NO PROCESA
+      if (!uid) {
+        console.log("⛔ SIN UID:", phone);
+        continue;
+      }
+
+      // 🔥 AISLAMIENTO REAL POR USUARIO
+      if (!convs[uid]) convs[uid] = {};
+
+      if (!convs[uid][phone]) {
+        convs[uid][phone] = {
+          jid,
+          msgs: []
+        };
+      } else {
+        convs[uid][phone].jid = jid;
+      }
 
       const text =
         msg.message?.conversation ||
         msg.message?.extendedTextMessage?.text ||
+        msg.message?.imageMessage?.caption ||
+        msg.message?.videoMessage?.caption ||
         '';
 
       if (!text) continue;
 
-      console.log('📩', phone, text);
+      console.log("📩 WA:", uid, phone, text);
 
-      // 🔥 guardar
-      if (!convs[phone]) {
-        convs[phone] = { jid, msgs: [] };
+      // ✅ guardar mensaje user
+      convs[uid][phone].msgs.push({
+        role: 'user',
+        text,
+        time: new Date().toLocaleTimeString('es-CO', {
+          hour: '2-digit',
+          minute: '2-digit'
+        })
+      });
+
+      // 🔁 enviar al worker
+      let data = null;
+
+      try {
+        const res = await fetch(`${WORKER}/wa`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-secret': SECRET
+          },
+          body: JSON.stringify({
+            from: phone,
+            text,
+            uid
+          })
+        });
+
+        data = await res.json();
+
+      } catch (e) {
+        console.error("Worker error:", e.message);
+        continue;
       }
 
-      convs[phone].msgs.push({
-        role: 'user',
-        text
-      });
+      // 🤖 responder
+      if (data?.reply && sock) {
+        await sock.sendMessage(jid, { text: data.reply });
 
-      // 🔥 RESPUESTA DIRECTA (SIN WORKER)
-      const reply = `🤖 Recibido: ${text}`;
+        convs[uid][phone].msgs.push({
+          role: 'assistant',
+          text: data.reply,
+          time: new Date().toLocaleTimeString('es-CO', {
+            hour: '2-digit',
+            minute: '2-digit'
+          })
+        });
+      }
 
-      await sock.sendMessage(jid, { text: reply });
-
-      convs[phone].msgs.push({
-        role: 'assistant',
-        text: reply
-      });
+    } catch (e) {
+      console.error("messages.upsert error:", e.message);
     }
-  });
+  }
+});
+
+     } catch(e) {
+    console.error('startWA error:', e.message);
+    setTimeout(startWA, 5000);
+  }
 }
 
-// ───────────────────────────────
-// RUTAS
+
+
+// ── RUTAS ─────────────────────────────────────────
+
+app.get('/', (_, res) => res.json({ service:'BA WhatsApp Bridge', status: isReady?'connected':'disconnected' }));
 
 app.get('/status', (_, res) => {
-  res.json({
-    ok: true,
-    ready: isReady,
-    convs: Object.keys(convs).length
-  });
+  try {
+    res.json({
+      ok: true,
+      ready: isReady || false,
+      hasQR: !!qrB64,
+      convs: convs ? Object.keys(convs).length : 0
+    });
+  } catch (e) {
+    console.error('status error:', e.message);
+    res.json({ ok: false });
+  }
 });
 
 app.get('/qr', (_, res) => {
@@ -149,37 +247,114 @@ app.post('/reset', (req, res) => {
   res.json({ ok:true, message:'Sesión limpiada — escanea el QR en /qr' });
 });
 
-app.get('/conversations', (_, res) => {
-  const list = Object.entries(convs).map(([phone, c]) => ({
-    phone,
-    lastMsg: c.msgs.at(-1)?.text || ''
-  }));
-  res.json({ conversations: list });
+app.get('/conversations', (req, res) => {
+
+  if (req.headers['x-secret'] !== SECRET) {
+    return res.status(401).json({ error:'Unauthorized' });
+  }
+
+  const uid = req.headers['x-uid'];
+
+  if (!uid) {
+    return res.json({ ok:true, conversations: [] });
+  }
+
+  const userConvs = convs[uid] || {};
+
+  const list = Object.entries(userConvs).map(([phone, chat]) => ({
+  phone,
+  uid, // 🔥 ESTE ES EL FIX
+  msgCount: chat.msgs.length,
+  lastMsg: chat.msgs.slice(-1)[0]?.text || '',
+  lastTime: chat.msgs.slice(-1)[0]?.time || ''
+}));
+
+  res.json({ ok:true, conversations:list });
 });
 
 app.get('/conversations/:phone', (req, res) => {
-  const chat = convs[req.params.phone];
-  res.json({ msgs: chat?.msgs || [] });
-});
 
-app.post('/send', async (req, res) => {
-  const { phone, text } = req.body;
-
-  if (!sock || !isReady) {
-    return res.json({ error: 'WA no listo' });
+  if (req.headers['x-secret'] !== SECRET) {
+    return res.status(401).json({ error:'Unauthorized' });
   }
 
-  const jid = `${phone}@s.whatsapp.net`;
+  const uid = req.headers['x-uid'];
+  const phone = req.params.phone;
 
-  await sock.sendMessage(jid, { text });
+  const chat = convs?.[uid]?.[phone];
 
-  res.json({ ok: true });
+  res.json({
+    ok: true,
+    msgs: chat ? chat.msgs : []
+  });
 });
 
-// ───────────────────────────────
-app.listen(PORT, () => {
-  console.log('🚀 Server', PORT);
-  startWA();
+
+app.post('/send', async (req, res) => {
+
+  if (req.headers['x-secret'] !== SECRET) {
+    return res.status(401).json({ error:'Unauthorized' });
+  }
+
+  const uid = req.headers['x-uid'];
+  const { phone, text } = req.body;
+
+  if (!uid) {
+    return res.status(400).json({ error:'uid requerido' });
+  }
+
+  if (!phone || !text) {
+    return res.status(400).json({ error:'phone y text requeridos' });
+  }
+
+  if (!isReady) {
+    return res.status(503).json({ error:'WhatsApp no conectado' });
+  }
+
+  try {
+
+    const cleanPhone = phone.replace(/\D/g, '');
+
+    const uid = req.headers['x-uid'];
+    const chat = convs?.[uid]?.[cleanPhone];
+
+    if (!chat || !chat.jid) {
+      return res.status(404).json({ error:'No existe conversación activa' });
+    }
+
+    await sock.sendMessage(chat.jid, { text });
+
+    chat.msgs.push({
+      role: 'human',
+      text,
+      time: new Date().toLocaleTimeString('es-CO', {
+        hour:'2-digit',
+        minute:'2-digit'
+      })
+    });
+
+    res.json({ ok:true });
+
+  } catch(e){
+    console.error('send error:', e.message);
+    res.status(500).json({ error:e.message });
+  }
+});
+
+app.delete('/conversations/:phone', (req, res) => {
+
+  if (req.headers['x-secret'] !== SECRET) {
+    return res.status(401).json({ error:'Unauthorized' });
+  }
+
+  const uid = req.headers['x-uid'];
+  const phone = req.params.phone;
+
+  if (convs?.[uid]?.[phone]) {
+    delete convs[uid][phone];
+  }
+
+  res.json({ ok:true });
 });
 
 // Mantener despierto — ping cada 14 minutos
