@@ -1,5 +1,5 @@
 import makeWASocket, {
- DisconnectReason,
+  DisconnectReason,
   useMultiFileAuthState,
   fetchLatestBaileysVersion
 } from '@whiskeysockets/baileys';
@@ -9,35 +9,23 @@ import QRCode   from 'qrcode';
 import pino     from 'pino';
 import { rmSync, existsSync } from 'fs';
 
-
 const app      = express();
 const PORT     = process.env.PORT   || 3000;
 const WORKER = process.env.WORKER || 'https://chat.hostweb.workers.dev';
 const SECRET   = process.env.SECRET || 'ba_secret_2026';
 const AUTH_DIR = './auth';
 
-<<<<<<< HEAD
-app.use(cors());
-=======
 app.use(cors({
   origin: '*',
   methods: ['GET','POST','OPTIONS'],
-  allowedHeaders: ['Content-Type', 'x-secret', 'x-uid']
+  allowedHeaders: ['Content-Type','x-secret']
 }));
-app.options('*', cors({
-  origin: '*',
-  methods: ['GET','POST','OPTIONS'],
-  allowedHeaders: ['Content-Type', 'x-secret', 'x-uid']
-}));
->>>>>>> parent of c54c719 (45544548893)
 app.use(express.json());
 
-
-let sock = null;
-const convs = {};
-let qrB64 = null;
+let sock    = null;
+let qrB64   = null;
 let isReady = false;
-
+const convs = {};
 
 function clearSession() {
   try {
@@ -83,96 +71,49 @@ async function startWA() {
     
     sock.ev.on('messages.upsert', async (event) => {
 
-<<<<<<< HEAD
   if (event.type !== 'notify') return;
 
   for (const msg of event.messages) {
-<<<<<<< HEAD
-=======
-    try {
-
-      if (!msg.message || msg.key.fromMe) continue;
->>>>>>> parent of 66b3457 (56657567568)
 
     if (!msg.message || msg.key.fromMe) continue;
 
     const jid = msg.key.remoteJid;
     if (!jid) continue;
 
-    const phone = jid.replace('@s.whatsapp.net', '');
+    // ⛔ BLOQUEAR GRUPOS
+    if (jid.includes('@g.us')) {
+      console.log('⛔ Grupo ignorado:', jid);
+      continue;
+    }
 
-<<<<<<< HEAD
+    // 🔥 NORMALIZAR TELÉFONO
+    const raw = jid.split('@')[0];
+    const phone = raw.replace(/\D/g, '');
+
+    // 🔥 CREAR ESTRUCTURA CORRECTA
+    if (!convs[phone]) {
+      convs[phone] = {
+        jid: jid,     // 👈 guardamos JID real
+        msgs: []
+      };
+    }
+
+    // 🔥 ACTUALIZAR JID (por si cambia @lid / @s.whatsapp.net)
+    convs[phone].jid = jid;
+
     const text =
-=======
-=======
-  if (!event.messages) return;
+      msg.message?.conversation ||
+      msg.message?.extendedTextMessage?.text ||
+      msg.message?.imageMessage?.caption ||
+      msg.message?.videoMessage?.caption ||
+      '';
 
-  for (const msg of event.messages) {
-    try {
-
-      if (!msg.message || msg.key.fromMe) continue;
-
-      const jid = msg.key.remoteJid;
-      if (!jid || jid.includes('@g.us')) continue;
-
-      const phone = jid.split('@')[0].replace(/\D/g, '');
-
-      // 🔥 UID (obligatorio)
-      let uid = null;
-
->>>>>>> parent of c54c719 (45544548893)
-      try {
-        const resUID = await fetch(`${WORKER}/resolve-uid`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'x-secret': SECRET
-          },
-          body: JSON.stringify({ phone })
-        });
-
-        const dataUID = await resUID.json();
-        if (dataUID?.uid) uid = dataUID.uid;
-
-      } catch (e) {
-        console.error('UID error:', e.message);
-      }
-<<<<<<< HEAD
-
-      // 🔴 SI NO HAY UID → NO PROCESA
-      if (!uid) {
-        console.log("⛔ SIN UID:", phone);
-        continue;
-      }
-
-      // 🔥 AISLAMIENTO REAL POR USUARIO
-      if (!convs[uid]) convs[uid] = {};
-
-      if (!convs[uid][phone]) {
-        convs[uid][phone] = {
-          jid,
-          msgs: []
-        };
-      } else {
-        convs[uid][phone].jid = jid;
-      }
-
-      const text =
->>>>>>> parent of 66b3457 (56657567568)
-        msg.message?.conversation ||
-        msg.message?.extendedTextMessage?.text ||
-        msg.message?.imageMessage?.caption ||
-        msg.message?.videoMessage?.caption ||
-        '';
-        
     if (!text) continue;
 
     console.log("📩 WA:", phone, text);
 
     // ✅ GUARDAR MENSAJE USUARIO
-    if (!convs[phone]) convs[phone] = [];
-
-    convs[phone].push({
+    convs[phone].msgs.push({
       role: 'user',
       text,
       time: new Date().toLocaleTimeString('es-CO', {
@@ -181,7 +122,7 @@ async function startWA() {
       })
     });
 
-    // 🔁 ENVÍA AL WORKER
+    // 🔁 ENVÍO AL WORKER
     try {
       const res = await fetch(`${WORKER}/wa`, {
         method: 'POST',
@@ -195,89 +136,9 @@ async function startWA() {
       const data = await res.json();
 
       if (data.reply) {
-
-        // ✅ RESPONDER EN WHATSAPP
         await sock.sendMessage(jid, { text: data.reply });
 
-<<<<<<< HEAD
-        // ✅ GUARDAR RESPUESTA IA
-        convs[phone].push({
-=======
-=======
-
-      // 🔴 SI NO HAY UID → NO PROCESA
-      if (!uid) {
-        console.log("⛔ SIN UID:", phone);
-        continue;
-      }
-
-      // 🔥 AISLAMIENTO REAL POR USUARIO
-      if (!convs[uid]) convs[uid] = {};
-
-      if (!convs[uid][phone]) {
-        convs[uid][phone] = {
-          jid,
-          msgs: []
-        };
-      } else {
-        convs[uid][phone].jid = jid;
-      }
-
-      const text =
-        msg.message?.conversation ||
-        msg.message?.extendedTextMessage?.text ||
-        msg.message?.imageMessage?.caption ||
-        msg.message?.videoMessage?.caption ||
-        '';
-
-      if (!text) continue;
-
-      console.log("📩 WA:", uid, phone, text);
-
-      // ✅ guardar mensaje user
-      convs[uid][phone].msgs.push({
-        role: 'user',
-        text,
-        time: new Date().toLocaleTimeString('es-CO', {
-          hour: '2-digit',
-          minute: '2-digit'
-        })
-      });
-
-      // 🔁 enviar al worker
-      let data = null;
-
-      try {
-        const res = await fetch(`${WORKER}/wa`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'x-secret': SECRET
-          },
-          body: JSON.stringify({
-            from: phone,
-            text,
-            uid
-          })
-        });
-
-        data = await res.json();
-
->>>>>>> parent of c54c719 (45544548893)
-      } catch (e) {
-        console.error("Worker error:", e.message);
-        continue;
-      }
-
-      // 🤖 responder
-      if (data?.reply && sock) {
-        await sock.sendMessage(jid, { text: data.reply });
-
-        convs[uid][phone].msgs.push({
-<<<<<<< HEAD
->>>>>>> parent of 66b3457 (56657567568)
-=======
->>>>>>> parent of c54c719 (45544548893)
+        convs[phone].msgs.push({
           role: 'assistant',
           text: data.reply,
           time: new Date().toLocaleTimeString('es-CO', {
@@ -288,11 +149,7 @@ async function startWA() {
       }
 
     } catch (e) {
-<<<<<<< HEAD
       console.error("Worker error:", e.message);
-=======
-      console.error("messages.upsert error:", e.message);
->>>>>>> parent of c54c719 (45544548893)
     }
   }
 });
@@ -309,23 +166,7 @@ async function startWA() {
 
 app.get('/', (_, res) => res.json({ service:'BA WhatsApp Bridge', status: isReady?'connected':'disconnected' }));
 
-<<<<<<< HEAD
 app.get('/status', (_, res) => res.json({ ok:true, ready:isReady, hasQR:!!qrB64, convs:Object.keys(convs).length }));
-=======
-app.get('/status', (_, res) => {
-  try {
-    res.json({
-      ok: true,
-      ready: isReady || false,
-      hasQR: !!qrB64,
-      convs: convs ? Object.keys(convs).length : 0
-    });
-  } catch (e) {
-    console.error('status error:', e.message);
-    res.json({ ok: false });
-  }
-});
->>>>>>> parent of c54c719 (45544548893)
 
 app.get('/qr', (_, res) => {
   if (isReady) return res.send(`<!DOCTYPE html><html><body style="font-family:sans-serif;text-align:center;padding:60px;background:#0a0a0f;color:#fff">
@@ -355,113 +196,36 @@ app.post('/reset', (req, res) => {
 });
 
 app.get('/conversations', (req, res) => {
-<<<<<<< HEAD
   if (req.headers['x-secret'] !== SECRET) return res.status(401).json({ error:'Unauthorized' });
-  const list = Object.entries(convs).map(([phone, msgs]) => ({
-    phone, msgCount: msgs.length,
-    lastMsg:  msgs[msgs.length-1]?.text?.substring(0,80) || '',
-    lastTime: msgs[msgs.length-1]?.time || ''
+  const list = Object.entries(convs).map(([phone, chat]) => ({
+    phone,
+    msgCount: chat.msgs.length,
+    lastMsg: chat.msgs[chat.msgs.length - 1]?.text?.substring(0, 80) || '',
+    lastTime: chat.msgs[chat.msgs.length - 1]?.time || ''
   }));
   res.json({ ok:true, conversations:list });
 });
 
 app.get('/conversations/:phone', (req, res) => {
-  if (req.headers['x-secret'] !== SECRET) return res.status(401).json({ error:'Unauthorized' });
-  res.json({ ok:true, msgs: convs[req.params.phone] || [] });
-=======
-
   if (req.headers['x-secret'] !== SECRET) {
     return res.status(401).json({ error:'Unauthorized' });
   }
 
-  const uid = req.headers['x-uid'];
+  const chat = convs[req.params.phone];
 
-  if (!uid) {
-    return res.json({ ok:true, conversations: [] });
-  }
-
-  const userConvs = convs[uid] || {};
-
-  const list = Object.entries(userConvs).map(([phone, chat]) => ({
-  phone,
-  uid, // 🔥 ESTE ES EL FIX
-  msgCount: chat.msgs.length,
-  lastMsg: chat.msgs.slice(-1)[0]?.text || '',
-  lastTime: chat.msgs.slice(-1)[0]?.time || ''
-}));
-
-  res.json({ ok:true, conversations:list });
-});
-
-app.get('/conversations', (req, res) => {
-
-  if (req.headers['x-secret'] !== SECRET) {
-    return res.status(401).json({ error:'Unauthorized' });
-  }
-
-  const uid = req.headers['x-uid'];
-
-  if (!uid) {
-    return res.json({ ok:true, conversations: [] });
-  }
-
-  const userConvs = convs[uid] || {};
-
-  const list = Object.entries(userConvs).map(([phone, chat]) => ({
-    phone,
-    uid,
-    msgCount: chat.msgs.length,
-    lastMsg: chat.msgs.slice(-1)[0]?.text || '',
-    lastTime: chat.msgs.slice(-1)[0]?.time || ''
-  }));
-
-  res.json({ ok:true, conversations:list });
->>>>>>> parent of c54c719 (45544548893)
-});
+  res.json({
+    ok: true,
+    msgs: chat ? chat.msgs : []
+  });
+}); 
 
 
 app.post('/send', async (req, res) => {
-
   if (req.headers['x-secret'] !== SECRET) {
     return res.status(401).json({ error:'Unauthorized' });
   }
 
-  const uid = req.headers['x-uid'];
   const { phone, text } = req.body;
-<<<<<<< HEAD
-<<<<<<< HEAD
-  if (!phone || !text) return res.status(400).json({ error:'phone y text requeridos' });
-  if (!isReady)        return res.status(503).json({ error:'WhatsApp no conectado' });
-=======
-
-  if (!uid || !phone || !text) {
-    return res.status(400).json({ error: 'uid, phone y text requeridos' });
-  }
-
-  if (!isReady) {
-    return res.status(503).json({ error: 'WhatsApp no conectado' });
-  }
-
-  const cleanPhone = phone.replace(/\D/g, '');
-  const chat = convs?.[uid]?.[cleanPhone];
-
-  if (!chat?.jid) {
-    return res.status(404).json({ error: 'No existe conversación' });
-  }
-
->>>>>>> parent of 66b3457 (56657567568)
-  try {
-    const jid = phone.includes('@') ? phone : `${phone}@s.whatsapp.net`;
-    await sock.sendMessage(jid, { text });
-    if (!convs[phone]) convs[phone] = [];
-    convs[phone].push({ role:'human', text, time: new Date().toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'}) });
-    res.json({ ok:true });
-  } catch(e) { res.status(500).json({ error:e.message }); }
-=======
-
-  if (!uid) {
-    return res.status(400).json({ error:'uid requerido' });
-  }
 
   if (!phone || !text) {
     return res.status(400).json({ error:'phone y text requeridos' });
@@ -472,17 +236,20 @@ app.post('/send', async (req, res) => {
   }
 
   try {
-
     const cleanPhone = phone.replace(/\D/g, '');
 
-    const chat = convs?.[uid]?.[cleanPhone];
+    // 🔥 BUSCAR CONVERSACIÓN REAL
+    const chat = convs[cleanPhone];
 
     if (!chat || !chat.jid) {
-      return res.status(404).json({ error:'No existe conversación activa' });
+      return res.status(404).json({ error:'No existe conversación activa con ese número' });
     }
 
-    await sock.sendMessage(chat.jid, { text });
+    const jid = chat.jid; // 👈 ESTE ES EL FIX CLAVE
 
+    await sock.sendMessage(jid, { text });
+
+    // ✅ GUARDAR MENSAJE HUMANO
     chat.msgs.push({
       role: 'human',
       text,
@@ -492,28 +259,19 @@ app.post('/send', async (req, res) => {
       })
     });
 
+    console.log(`👤 Humano → ${cleanPhone}: ${text}`);
+
     res.json({ ok:true });
 
-  } catch(e){
+  } catch(e) {
     console.error('send error:', e.message);
     res.status(500).json({ error:e.message });
   }
->>>>>>> parent of c54c719 (45544548893)
 });
 
 app.delete('/conversations/:phone', (req, res) => {
-
-  if (req.headers['x-secret'] !== SECRET) {
-    return res.status(401).json({ error:'Unauthorized' });
-  }
-
-  const uid = req.headers['x-uid'];
-  const phone = req.params.phone;
-
-  if (convs?.[uid]?.[phone]) {
-    delete convs[uid][phone];
-  }
-
+  if (req.headers['x-secret'] !== SECRET) return res.status(401).json({ error:'Unauthorized' });
+  delete convs[req.params.phone];
   res.json({ ok:true });
 });
 
@@ -522,10 +280,5 @@ const RENDER_URL = process.env.RENDER_EXTERNAL_URL || `http://localhost:${PORT}`
 setInterval(() => {
   fetch(`${RENDER_URL}/status`).catch(() => {});
 }, 14 * 60 * 1000);
-<<<<<<< HEAD
-=======
-
-app.listen(PORT, () => { console.log(`🚀 Puerto ${PORT}`); startWA(); });
->>>>>>> parent of c54c719 (45544548893)
 
 app.listen(PORT, () => { console.log(`🚀 Puerto ${PORT}`); startWA(); });
