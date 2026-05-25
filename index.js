@@ -17,12 +17,15 @@ const SELF_URL = process.env.RENDER_EXTERNAL_URL || `http://localhost:${PORT}`;
 const AUTH_DIR = './auth';
 
 <<<<<<< HEAD
+<<<<<<< HEAD
 app.use(cors({
   origin: '*',
   methods: ['GET','POST','OPTIONS'],
   allowedHeaders: ['Content-Type','x-secret']
 }));
 =======
+=======
+>>>>>>> parent of cd59ae7 (restore)
 app.use((req, res, next) => {
   res.setHeader('Access-Control-Allow-Origin',  '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, DELETE, OPTIONS');
@@ -30,6 +33,9 @@ app.use((req, res, next) => {
   if (req.method === 'OPTIONS') return res.status(204).end();
   next();
 });
+<<<<<<< HEAD
+>>>>>>> parent of cd59ae7 (restore)
+=======
 >>>>>>> parent of cd59ae7 (restore)
 app.use(express.json());
 
@@ -71,6 +77,7 @@ async function startWA() {
 
     sock.ev.on('creds.update', saveCreds);
 
+<<<<<<< HEAD
 <<<<<<< HEAD
   if (!event.messages) return;
 
@@ -245,6 +252,39 @@ app.get('/status', (_, res) => res.json({ ok:true, ready:isReady, hasQR:!!qrB64,
 app.get('/',        (_, res) => res.json({ service:'BA WhatsApp Bridge', status: isReady?'connected':'disconnected' }));
 app.get('/status',  (_, res) => res.json({ ok:true, ready:isReady, hasQR:!!qrB64, convs:Object.keys(convs).length }));
 >>>>>>> parent of cd59ae7 (restore)
+=======
+    sock.ev.on('messages.upsert', async ({ messages, type }) => {
+      if (type !== 'notify') return;
+      for (const msg of messages) {
+        try {
+          if (!msg.message || msg.key.fromMe) continue;
+          const jid = msg.key.remoteJid;
+          if (!jid || !jid.endsWith('@s.whatsapp.net')) continue;
+          const phone = jid.replace('@s.whatsapp.net', '').replace(/\D/g, '');
+          const text = msg.message?.conversation || msg.message?.extendedTextMessage?.text || msg.message?.imageMessage?.caption || '';
+          if (!text.trim()) continue;
+          console.log(`MSG ${phone}: ${text.substring(0,60)}`);
+          if (!convs[phone]) convs[phone] = { jid, msgs: [] };
+          convs[phone].jid = jid;
+          convs[phone].msgs.push({ role:'user', text, time: new Date().toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'}) });
+          const res  = await fetch(`${WORKER}/wa`, { method:'POST', headers:{'Content-Type':'application/json','x-secret':SECRET}, body: JSON.stringify({from:phone, text, token:OWNER}) });
+          if (!res.ok) { console.error('Worker status:', res.status); continue; }
+          const data  = await res.json();
+          const reply = data.reply || '';
+          if (reply) {
+            await sock.sendMessage(jid, { text: reply });
+            convs[phone].msgs.push({ role:'assistant', text:reply, time: new Date().toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'}) });
+            console.log(`BOT ${phone}: ${reply.substring(0,60)}`);
+          }
+        } catch(e) { console.error('msg error:', e.message); }
+      }
+    });
+  } catch(e) { console.error('startWA error:', e.message); setTimeout(startWA, 5000); }
+}
+
+app.get('/',        (_, res) => res.json({ service:'BA WhatsApp Bridge', status: isReady?'connected':'disconnected' }));
+app.get('/status',  (_, res) => res.json({ ok:true, ready:isReady, hasQR:!!qrB64, convs:Object.keys(convs).length }));
+>>>>>>> parent of cd59ae7 (restore)
 
 app.get('/qr', (_, res) => {
   if (isReady) return res.send(`<!DOCTYPE html><html><body style="font-family:sans-serif;text-align:center;padding:60px;background:#0a0a0f;color:#fff"><h2 style="color:#4ade80">WhatsApp Conectado</h2><p style="color:#9898b0">Bot activo. Solo responde mensajes privados.</p><script>setTimeout(()=>location.reload(),10000)</script></body></html>`);
@@ -263,6 +303,7 @@ app.post('/reset', (req, res) => {
 
 app.get('/conversations', (req, res) => {
   if (req.headers['x-secret'] !== SECRET) return res.status(401).json({ error:'Unauthorized' });
+<<<<<<< HEAD
 <<<<<<< HEAD
 
   const list = Object.entries(convs).map(([phone, chat]) => ({
@@ -368,6 +409,37 @@ app.post('/send', async (req, res) => {
     res.json({ ok:true });
   } catch(e) { res.status(500).json({ error: e.message }); }
 >>>>>>> parent of cd59ae7 (restore)
+=======
+  const list = Object.entries(convs).map(([phone, chat]) => ({
+    phone, msgCount: chat.msgs.length,
+    lastMsg:  chat.msgs[chat.msgs.length-1]?.text?.substring(0,80) || '',
+    lastTime: chat.msgs[chat.msgs.length-1]?.time || ''
+  })).sort((a,b) => b.lastTime.localeCompare(a.lastTime));
+  res.json({ ok:true, conversations: list });
+});
+
+app.get('/conversations/:phone', (req, res) => {
+  if (req.headers['x-secret'] !== SECRET) return res.status(401).json({ error:'Unauthorized' });
+  const chat = convs[req.params.phone];
+  res.json({ ok:true, msgs: chat?.msgs || [] });
+});
+
+app.post('/send', async (req, res) => {
+  if (req.headers['x-secret'] !== SECRET) return res.status(401).json({ error:'Unauthorized' });
+  const { phone, text } = req.body;
+  if (!phone || !text) return res.status(400).json({ error:'phone y text requeridos' });
+  if (!isReady)        return res.status(503).json({ error:'WhatsApp no conectado' });
+  try {
+    const cleanPhone = phone.replace(/\D/g, '');
+    const chat = convs[cleanPhone];
+    const jid  = chat?.jid || `${cleanPhone}@s.whatsapp.net`;
+    await sock.sendMessage(jid, { text });
+    if (!convs[cleanPhone]) convs[cleanPhone] = { jid, msgs: [] };
+    convs[cleanPhone].msgs.push({ role:'human', text, time: new Date().toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'}) });
+    console.log(`HUMANO ${cleanPhone}: ${text.substring(0,60)}`);
+    res.json({ ok:true });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+>>>>>>> parent of cd59ae7 (restore)
 });
 
 app.delete('/conversations/:phone', (req, res) => {
@@ -377,6 +449,7 @@ app.delete('/conversations/:phone', (req, res) => {
 });
 
 <<<<<<< HEAD
+<<<<<<< HEAD
 // Mantener despierto — ping cada 14 minutos
 const RENDER_URL = process.env.RENDER_EXTERNAL_URL || `http://localhost:${PORT}`;
 setInterval(() => {
@@ -385,6 +458,8 @@ setInterval(() => {
 
 app.listen(PORT, () => { console.log(`🚀 Puerto ${PORT}`); startWA(); });
 =======
+=======
+>>>>>>> parent of cd59ae7 (restore)
 setInterval(() => fetch(`${SELF_URL}/status`).catch(()=>{}), 14*60*1000);
 app.listen(PORT, () => { console.log(`Puerto ${PORT} | Worker: ${WORKER} | Owner: ${OWNER}`); startWA(); });
 
