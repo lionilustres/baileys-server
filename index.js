@@ -70,6 +70,12 @@ async function startWA() {
   if (event.type !== 'notify') return;
 
   for (const msg of event.messages) {
+<<<<<<< HEAD
+=======
+    try {
+
+      if (!msg.message || msg.key.fromMe) continue;
+>>>>>>> parent of 66b3457 (56657567568)
 
     if (!msg.message || msg.key.fromMe) continue;
 
@@ -78,7 +84,46 @@ async function startWA() {
 
     const phone = jid.replace('@s.whatsapp.net', '');
 
+<<<<<<< HEAD
     const text =
+=======
+      try {
+        const resUID = await fetch(`${WORKER}/resolve-uid`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-secret': SECRET
+          },
+          body: JSON.stringify({ phone })
+        });
+
+        const dataUID = await resUID.json();
+        if (dataUID?.uid) uid = dataUID.uid;
+
+      } catch (e) {
+        console.error('UID error:', e.message);
+      }
+
+      // 🔴 SI NO HAY UID → NO PROCESA
+      if (!uid) {
+        console.log("⛔ SIN UID:", phone);
+        continue;
+      }
+
+      // 🔥 AISLAMIENTO REAL POR USUARIO
+      if (!convs[uid]) convs[uid] = {};
+
+      if (!convs[uid][phone]) {
+        convs[uid][phone] = {
+          jid,
+          msgs: []
+        };
+      } else {
+        convs[uid][phone].jid = jid;
+      }
+
+      const text =
+>>>>>>> parent of 66b3457 (56657567568)
         msg.message?.conversation ||
         msg.message?.extendedTextMessage?.text ||
         msg.message?.imageMessage?.caption ||
@@ -119,8 +164,21 @@ async function startWA() {
         // ✅ RESPONDER EN WHATSAPP
         await sock.sendMessage(jid, { text: data.reply });
 
+<<<<<<< HEAD
         // ✅ GUARDAR RESPUESTA IA
         convs[phone].push({
+=======
+      } catch (e) {
+        console.error("Worker error:", e.message);
+        continue;
+      }
+
+      // 🤖 responder
+      if (data?.reply && sock) {
+        await sock.sendMessage(jid, { text: data.reply });
+
+        convs[uid][phone].msgs.push({
+>>>>>>> parent of 66b3457 (56657567568)
           role: 'assistant',
           text: data.reply,
           time: new Date().toLocaleTimeString('es-CO', {
@@ -195,8 +253,27 @@ app.get('/conversations/:phone', (req, res) => {
 app.post('/send', async (req, res) => {
   if (req.headers['x-secret'] !== SECRET) return res.status(401).json({ error:'Unauthorized' });
   const { phone, text } = req.body;
+<<<<<<< HEAD
   if (!phone || !text) return res.status(400).json({ error:'phone y text requeridos' });
   if (!isReady)        return res.status(503).json({ error:'WhatsApp no conectado' });
+=======
+
+  if (!uid || !phone || !text) {
+    return res.status(400).json({ error: 'uid, phone y text requeridos' });
+  }
+
+  if (!isReady) {
+    return res.status(503).json({ error: 'WhatsApp no conectado' });
+  }
+
+  const cleanPhone = phone.replace(/\D/g, '');
+  const chat = convs?.[uid]?.[cleanPhone];
+
+  if (!chat?.jid) {
+    return res.status(404).json({ error: 'No existe conversación' });
+  }
+
+>>>>>>> parent of 66b3457 (56657567568)
   try {
     const jid = phone.includes('@') ? phone : `${phone}@s.whatsapp.net`;
     await sock.sendMessage(jid, { text });
