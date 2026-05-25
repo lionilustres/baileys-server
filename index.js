@@ -9,7 +9,6 @@ import QRCode   from 'qrcode';
 import pino     from 'pino';
 import { rmSync, existsSync } from 'fs';
 
-
 const app      = express();
 const PORT     = process.env.PORT   || 3000;
 const WORKER = process.env.WORKER || 'https://chat.hostweb.workers.dev';
@@ -19,21 +18,14 @@ const AUTH_DIR = './auth';
 app.use(cors({
   origin: '*',
   methods: ['GET','POST','OPTIONS'],
-  allowedHeaders: ['Content-Type', 'x-secret', 'x-uid']
-}));
-app.options('*', cors({
-  origin: '*',
-  methods: ['GET','POST','OPTIONS'],
-  allowedHeaders: ['Content-Type', 'x-secret', 'x-uid']
+  allowedHeaders: ['Content-Type','x-secret']
 }));
 app.use(express.json());
 
-
-let sock = null;
-const convs = {};
-let qrB64 = null;
+let sock    = null;
+let qrB64   = null;
 let isReady = false;
-
+const convs = {};
 
 function clearSession() {
   try {
@@ -82,17 +74,23 @@ async function startWA() {
   if (!event.messages) return;
 
   for (const msg of event.messages) {
+
     try {
 
       if (!msg.message || msg.key.fromMe) continue;
 
       const jid = msg.key.remoteJid;
-      if (!jid || jid.includes('@g.us')) continue;
+      if (!jid) continue;
 
-      const phone = jid.split('@')[0].replace(/\D/g, '');
+      // ⛔ BLOQUEAR GRUPOS
+      if (jid.includes('@g.us')) continue;
 
-      // 🔥 UID (obligatorio)
-      let uid = null;
+      // 🔥 NORMALIZAR TELÉFONO
+      const raw = jid.split('@')[0];
+      const phone = raw.replace(/\D/g, '');
+
+      // 🔥 UID
+      let uid = convs[phone]?.uid || null;
 
       try {
         const resUID = await fetch(`${WORKER}/resolve-uid`, {
@@ -107,26 +105,26 @@ async function startWA() {
         const dataUID = await resUID.json();
         if (dataUID?.uid) uid = dataUID.uid;
 
+        if (!uid) {
+          console.log("⛔ SIN UID → NO se guarda:", phone);
+         }
+
       } catch (e) {
-        console.error('UID error:', e.message);
+        console.error('UID resolve error:', e.message);
       }
 
-      // 🔴 SI NO HAY UID → NO PROCESA
-      if (!uid) {
-        console.log("⛔ SIN UID:", phone);
-        continue;
-      }
+    
 
-      // 🔥 AISLAMIENTO REAL POR USUARIO
-      if (!convs[uid]) convs[uid] = {};
-
-      if (!convs[uid][phone]) {
-        convs[uid][phone] = {
+      // 🔥 CREAR / ACTUALIZAR CONVERSACIÓN
+      if (!convs[phone]) {
+        convs[phone] = {
           jid,
+          uid,
           msgs: []
         };
       } else {
-        convs[uid][phone].jid = jid;
+        convs[phone].jid = jid;
+        convs[phone].uid = uid;
       }
 
       const text =
@@ -138,10 +136,10 @@ async function startWA() {
 
       if (!text) continue;
 
-      console.log("📩 WA:", uid, phone, text);
+      console.log("📩 WA:", phone, text);
 
-      // ✅ guardar mensaje user
-      convs[uid][phone].msgs.push({
+      // ✅ GUARDAR USER
+      convs[phone].msgs.push({
         role: 'user',
         text,
         time: new Date().toLocaleTimeString('es-CO', {
@@ -150,7 +148,7 @@ async function startWA() {
         })
       });
 
-      // 🔁 enviar al worker
+      // 🔁 ENVIAR AL WORKER
       let data = null;
 
       try {
@@ -161,9 +159,9 @@ async function startWA() {
             'x-secret': SECRET
           },
           body: JSON.stringify({
-            from: phone,
-            text,
-            uid
+          from: phone,
+          text,
+          uid: uid || null
           })
         });
 
@@ -174,22 +172,28 @@ async function startWA() {
         continue;
       }
 
-      // 🤖 responder
-      if (data?.reply && sock) {
-        await sock.sendMessage(jid, { text: data.reply });
+     // 🤖 RESPUESTA BOT
+if (data?.reply && sock) {
 
-        convs[uid][phone].msgs.push({
-          role: 'assistant',
-          text: data.reply,
-          time: new Date().toLocaleTimeString('es-CO', {
-            hour: '2-digit',
-            minute: '2-digit'
-          })
-        });
-      }
+  try {
+    await sock.sendMessage(jid, { text: data.reply });
+
+    convs[phone].msgs.push({
+      role: 'assistant',
+      text: data.reply,
+      time: new Date().toLocaleTimeString('es-CO', {
+        hour: '2-digit',
+        minute: '2-digit'
+      })
+    });
+
+  } catch (e) {
+    console.error("Send error:", e.message);
+  }
+}
 
     } catch (e) {
-      console.error("messages.upsert error:", e.message);
+      console.error("messages.upsert fatal:", e.message);
     }
   }
 });
@@ -206,19 +210,7 @@ async function startWA() {
 
 app.get('/', (_, res) => res.json({ service:'BA WhatsApp Bridge', status: isReady?'connected':'disconnected' }));
 
-app.get('/status', (_, res) => {
-  try {
-    res.json({
-      ok: true,
-      ready: isReady || false,
-      hasQR: !!qrB64,
-      convs: convs ? Object.keys(convs).length : 0
-    });
-  } catch (e) {
-    console.error('status error:', e.message);
-    res.json({ ok: false });
-  }
-});
+app.get('/status', (_, res) => res.json({ ok:true, ready:isReady, hasQR:!!qrB64, convs:Object.keys(convs).length }));
 
 app.get('/qr', (_, res) => {
   if (isReady) return res.send(`<!DOCTYPE html><html><body style="font-family:sans-serif;text-align:center;padding:60px;background:#0a0a0f;color:#fff">
@@ -248,60 +240,39 @@ app.post('/reset', (req, res) => {
 });
 
 app.get('/conversations', (req, res) => {
+  if (req.headers['x-secret'] !== SECRET) return res.status(401).json({ error:'Unauthorized' });
 
-  if (req.headers['x-secret'] !== SECRET) {
-    return res.status(401).json({ error:'Unauthorized' });
-  }
-
-  const uid = req.headers['x-uid'];
-
-  if (!uid) {
-    return res.json({ ok:true, conversations: [] });
-  }
-
-  const userConvs = convs[uid] || {};
-
-  const list = Object.entries(userConvs).map(([phone, chat]) => ({
-  phone,
-  uid, // 🔥 ESTE ES EL FIX
-  msgCount: chat.msgs.length,
-  lastMsg: chat.msgs.slice(-1)[0]?.text || '',
-  lastTime: chat.msgs.slice(-1)[0]?.time || ''
-}));
+  const list = Object.entries(convs).map(([phone, chat]) => ({
+    phone,
+    uid: chat.uid, // 👈 FIX CLAVE
+    msgCount: chat.msgs.length,
+    lastMsg: chat.msgs[chat.msgs.length - 1]?.text?.substring(0, 80) || '',
+    lastTime: chat.msgs[chat.msgs.length - 1]?.time || ''
+  }));
 
   res.json({ ok:true, conversations:list });
 });
 
 app.get('/conversations/:phone', (req, res) => {
-
   if (req.headers['x-secret'] !== SECRET) {
     return res.status(401).json({ error:'Unauthorized' });
   }
 
-  const uid = req.headers['x-uid'];
-  const phone = req.params.phone;
-
-  const chat = convs?.[uid]?.[phone];
+  const chat = convs[req.params.phone];
 
   res.json({
     ok: true,
     msgs: chat ? chat.msgs : []
   });
-});
+}); 
 
 
 app.post('/send', async (req, res) => {
-
   if (req.headers['x-secret'] !== SECRET) {
     return res.status(401).json({ error:'Unauthorized' });
   }
 
-  const uid = req.headers['x-uid'];
   const { phone, text } = req.body;
-
-  if (!uid) {
-    return res.status(400).json({ error:'uid requerido' });
-  }
 
   if (!phone || !text) {
     return res.status(400).json({ error:'phone y text requeridos' });
@@ -312,18 +283,20 @@ app.post('/send', async (req, res) => {
   }
 
   try {
-
     const cleanPhone = phone.replace(/\D/g, '');
 
-    const uid = req.headers['x-uid'];
-    const chat = convs?.[uid]?.[cleanPhone];
+    // 🔥 BUSCAR CONVERSACIÓN REAL
+    const chat = convs[cleanPhone];
 
     if (!chat || !chat.jid) {
-      return res.status(404).json({ error:'No existe conversación activa' });
+      return res.status(404).json({ error:'No existe conversación activa con ese número' });
     }
 
-    await sock.sendMessage(chat.jid, { text });
+    const jid = chat.jid; // 👈 ESTE ES EL FIX CLAVE
 
+    await sock.sendMessage(jid, { text });
+
+    // ✅ GUARDAR MENSAJE HUMANO
     chat.msgs.push({
       role: 'human',
       text,
@@ -333,27 +306,19 @@ app.post('/send', async (req, res) => {
       })
     });
 
+    console.log(`👤 Humano → ${cleanPhone}: ${text}`);
+
     res.json({ ok:true });
 
-  } catch(e){
+  } catch(e) {
     console.error('send error:', e.message);
     res.status(500).json({ error:e.message });
   }
 });
 
 app.delete('/conversations/:phone', (req, res) => {
-
-  if (req.headers['x-secret'] !== SECRET) {
-    return res.status(401).json({ error:'Unauthorized' });
-  }
-
-  const uid = req.headers['x-uid'];
-  const phone = req.params.phone;
-
-  if (convs?.[uid]?.[phone]) {
-    delete convs[uid][phone];
-  }
-
+  if (req.headers['x-secret'] !== SECRET) return res.status(401).json({ error:'Unauthorized' });
+  delete convs[req.params.phone];
   res.json({ ok:true });
 });
 
@@ -364,4 +329,3 @@ setInterval(() => {
 }, 14 * 60 * 1000);
 
 app.listen(PORT, () => { console.log(`🚀 Puerto ${PORT}`); startWA(); });
-
