@@ -1,5 +1,5 @@
 import makeWASocket, {
-  DisconnectReason,
+ DisconnectReason,
   useMultiFileAuthState,
   fetchLatestBaileysVersion
 } from '@whiskeysockets/baileys';
@@ -15,11 +15,7 @@ const WORKER = process.env.WORKER || 'https://chat.hostweb.workers.dev';
 const SECRET   = process.env.SECRET || 'ba_secret_2026';
 const AUTH_DIR = './auth';
 
-app.use(cors({
-  origin: '*',
-  methods: ['GET','POST','OPTIONS'],
-  allowedHeaders: ['Content-Type','x-secret']
-}));
+app.use(cors());
 app.use(express.json());
 
 let sock    = null;
@@ -80,40 +76,23 @@ async function startWA() {
     const jid = msg.key.remoteJid;
     if (!jid) continue;
 
-    // ⛔ BLOQUEAR GRUPOS
-    if (jid.includes('@g.us')) {
-      console.log('⛔ Grupo ignorado:', jid);
-      continue;
-    }
-
-    // 🔥 NORMALIZAR TELÉFONO
-    const raw = jid.split('@')[0];
-    const phone = raw.replace(/\D/g, '');
-
-    // 🔥 CREAR ESTRUCTURA CORRECTA
-    if (!convs[phone]) {
-      convs[phone] = {
-        jid: jid,     // 👈 guardamos JID real
-        msgs: []
-      };
-    }
-
-    // 🔥 ACTUALIZAR JID (por si cambia @lid / @s.whatsapp.net)
-    convs[phone].jid = jid;
+    const phone = jid.replace('@s.whatsapp.net', '');
 
     const text =
-      msg.message?.conversation ||
-      msg.message?.extendedTextMessage?.text ||
-      msg.message?.imageMessage?.caption ||
-      msg.message?.videoMessage?.caption ||
-      '';
-
+        msg.message?.conversation ||
+        msg.message?.extendedTextMessage?.text ||
+        msg.message?.imageMessage?.caption ||
+        msg.message?.videoMessage?.caption ||
+        '';
+        
     if (!text) continue;
 
     console.log("📩 WA:", phone, text);
 
     // ✅ GUARDAR MENSAJE USUARIO
-    convs[phone].msgs.push({
+    if (!convs[phone]) convs[phone] = [];
+
+    convs[phone].push({
       role: 'user',
       text,
       time: new Date().toLocaleTimeString('es-CO', {
@@ -122,7 +101,7 @@ async function startWA() {
       })
     });
 
-    // 🔁 ENVÍO AL WORKER
+    // 🔁 ENVÍA AL WORKER
     try {
       const res = await fetch(`${WORKER}/wa`, {
         method: 'POST',
@@ -136,9 +115,12 @@ async function startWA() {
       const data = await res.json();
 
       if (data.reply) {
+
+        // ✅ RESPONDER EN WHATSAPP
         await sock.sendMessage(jid, { text: data.reply });
 
-        convs[phone].msgs.push({
+        // ✅ GUARDAR RESPUESTA IA
+        convs[phone].push({
           role: 'assistant',
           text: data.reply,
           time: new Date().toLocaleTimeString('es-CO', {
@@ -197,76 +179,31 @@ app.post('/reset', (req, res) => {
 
 app.get('/conversations', (req, res) => {
   if (req.headers['x-secret'] !== SECRET) return res.status(401).json({ error:'Unauthorized' });
-  const list = Object.entries(convs).map(([phone, chat]) => ({
-    phone,
-    msgCount: chat.msgs.length,
-    lastMsg: chat.msgs[chat.msgs.length - 1]?.text?.substring(0, 80) || '',
-    lastTime: chat.msgs[chat.msgs.length - 1]?.time || ''
+  const list = Object.entries(convs).map(([phone, msgs]) => ({
+    phone, msgCount: msgs.length,
+    lastMsg:  msgs[msgs.length-1]?.text?.substring(0,80) || '',
+    lastTime: msgs[msgs.length-1]?.time || ''
   }));
   res.json({ ok:true, conversations:list });
 });
 
 app.get('/conversations/:phone', (req, res) => {
-  if (req.headers['x-secret'] !== SECRET) {
-    return res.status(401).json({ error:'Unauthorized' });
-  }
-
-  const chat = convs[req.params.phone];
-
-  res.json({
-    ok: true,
-    msgs: chat ? chat.msgs : []
-  });
-}); 
-
+  if (req.headers['x-secret'] !== SECRET) return res.status(401).json({ error:'Unauthorized' });
+  res.json({ ok:true, msgs: convs[req.params.phone] || [] });
+});
 
 app.post('/send', async (req, res) => {
-  if (req.headers['x-secret'] !== SECRET) {
-    return res.status(401).json({ error:'Unauthorized' });
-  }
-
+  if (req.headers['x-secret'] !== SECRET) return res.status(401).json({ error:'Unauthorized' });
   const { phone, text } = req.body;
-
-  if (!phone || !text) {
-    return res.status(400).json({ error:'phone y text requeridos' });
-  }
-
-  if (!isReady) {
-    return res.status(503).json({ error:'WhatsApp no conectado' });
-  }
-
+  if (!phone || !text) return res.status(400).json({ error:'phone y text requeridos' });
+  if (!isReady)        return res.status(503).json({ error:'WhatsApp no conectado' });
   try {
-    const cleanPhone = phone.replace(/\D/g, '');
-
-    // 🔥 BUSCAR CONVERSACIÓN REAL
-    const chat = convs[cleanPhone];
-
-    if (!chat || !chat.jid) {
-      return res.status(404).json({ error:'No existe conversación activa con ese número' });
-    }
-
-    const jid = chat.jid; // 👈 ESTE ES EL FIX CLAVE
-
+    const jid = phone.includes('@') ? phone : `${phone}@s.whatsapp.net`;
     await sock.sendMessage(jid, { text });
-
-    // ✅ GUARDAR MENSAJE HUMANO
-    chat.msgs.push({
-      role: 'human',
-      text,
-      time: new Date().toLocaleTimeString('es-CO', {
-        hour:'2-digit',
-        minute:'2-digit'
-      })
-    });
-
-    console.log(`👤 Humano → ${cleanPhone}: ${text}`);
-
+    if (!convs[phone]) convs[phone] = [];
+    convs[phone].push({ role:'human', text, time: new Date().toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'}) });
     res.json({ ok:true });
-
-  } catch(e) {
-    console.error('send error:', e.message);
-    res.status(500).json({ error:e.message });
-  }
+  } catch(e) { res.status(500).json({ error:e.message }); }
 });
 
 app.delete('/conversations/:phone', (req, res) => {
