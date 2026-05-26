@@ -144,39 +144,41 @@ const uid = dataUID.uid;
     });
 
     // 🔁 ENVÍO AL WORKER
-    try {
-      const res = await fetch(`${WORKER}/wa`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-secret': SECRET
-        },
-        body: JSON.stringify({
-        from: phone,
-        text,
-        uid
-        })
+   // 🔁 ENVÍO AL WORKER
+try {
+  const res = await fetch(`${WORKER}/wa`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-secret': SECRET
+    },
+    body: JSON.stringify({
+      from: phone,
+      text,
+      uid
+    })
+  });
 
-      const data = await res.json();
+  const data = await res.json();
 
-      if (data.reply) {
-        await sock.sendMessage(jid, { text: data.reply });
+  if (data.reply) {
+    await sock.sendMessage(jid, { text: data.reply });
 
-        convs[phone].msgs.push({
-          role: 'assistant',
-          text: data.reply,
-          time: new Date().toLocaleTimeString('es-CO', {
-            hour: '2-digit',
-            minute: '2-digit'
-          })
-        });
-      }
-
-    } catch (e) {
-      console.error("Worker error:", e.message);
-    }
+    convs[phone].msgs.push({
+      role: 'assistant',
+      text: data.reply,
+      time: new Date().toLocaleTimeString('es-CO', {
+        hour: '2-digit',
+        minute: '2-digit'
+      })
+    });
   }
-});
+
+} catch (e) {
+  console.error("Worker error:", e.message);
+}
+  }
+})
 
      } catch(e) {
     console.error('startWA error:', e.message);
