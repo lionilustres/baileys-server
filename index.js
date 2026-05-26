@@ -88,28 +88,7 @@ async function startWA() {
 
     // 🔥 NORMALIZAR TELÉFONO
     const raw = jid.split('@')[0];
-    
     const phone = raw.replace(/\D/g, '');
-
-// 🔥 RESOLVER UID
-const resUID = await fetch(`${WORKER}/resolve-uid`, {
-  method: 'POST',
-  headers: {
-    'Content-Type': 'application/json',
-    'x-secret': SECRET
-  },
-  body: JSON.stringify({ phone })
-});
-
-const dataUID = await resUID.json();
-
-if (!dataUID.uid) {
-  console.log("❌ SIN UID → mensaje ignorado");
-  continue;
-}
-
-// 👇 ESTE ES EL UID REAL
-const uid = dataUID.uid;
 
     // 🔥 CREAR ESTRUCTURA CORRECTA
     if (!convs[phone]) {
@@ -144,41 +123,40 @@ const uid = dataUID.uid;
     });
 
     // 🔁 ENVÍO AL WORKER
-   // 🔁 ENVÍO AL WORKER
-try {
-  const res = await fetch(`${WORKER}/wa`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-secret': SECRET
-    },
-    body: JSON.stringify({
-      from: phone,
-      text,
-      uid
-    })
-  });
+    try {
+      const res = await fetch(`${WORKER}/wa`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-secret': SECRET
+        },
+        body: JSON.stringify({
+  from: phone,
+  text,
+        uid: phone // 🔥 TEMPORAL: usar phone como uid para probar
+       })
+      });
 
-  const data = await res.json();
+      const data = await res.json();
 
-  if (data.reply) {
-    await sock.sendMessage(jid, { text: data.reply });
+      if (data.reply) {
+        await sock.sendMessage(jid, { text: data.reply });
 
-    convs[phone].msgs.push({
-      role: 'assistant',
-      text: data.reply,
-      time: new Date().toLocaleTimeString('es-CO', {
-        hour: '2-digit',
-        minute: '2-digit'
-      })
-    });
+        convs[phone].msgs.push({
+          role: 'assistant',
+          text: data.reply,
+          time: new Date().toLocaleTimeString('es-CO', {
+            hour: '2-digit',
+            minute: '2-digit'
+          })
+        });
+      }
+
+    } catch (e) {
+      console.error("Worker error:", e.message);
+    }
   }
-
-} catch (e) {
-  console.error("Worker error:", e.message);
-}
-  }
-})
+});
 
      } catch(e) {
     console.error('startWA error:', e.message);
