@@ -88,7 +88,28 @@ async function startWA() {
 
     // 🔥 NORMALIZAR TELÉFONO
     const raw = jid.split('@')[0];
+    
     const phone = raw.replace(/\D/g, '');
+
+// 🔥 RESOLVER UID
+const resUID = await fetch(`${WORKER}/resolve-uid`, {
+  method: 'POST',
+  headers: {
+    'Content-Type': 'application/json',
+    'x-secret': SECRET
+  },
+  body: JSON.stringify({ phone })
+});
+
+const dataUID = await resUID.json();
+
+if (!dataUID.uid) {
+  console.log("❌ SIN UID → mensaje ignorado");
+  continue;
+}
+
+// 👇 ESTE ES EL UID REAL
+const uid = dataUID.uid;
 
     // 🔥 CREAR ESTRUCTURA CORRECTA
     if (!convs[phone]) {
@@ -132,10 +153,9 @@ async function startWA() {
         },
         body: JSON.stringify({
         from: phone,
-      text,
-      uid: phone // 🔥 TEMPORAL: usar phone como uid para probar
-       })
-      });
+        text,
+        uid
+        })
 
       const data = await res.json();
 
