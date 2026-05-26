@@ -69,7 +69,7 @@ async function startWA() {
 
     sock.ev.on('creds.update', saveCreds);
     
-    sock.ev.on('messages.upsert', async (event) => {
+   sock.ev.on('messages.upsert', async (event) => {
 
   if (event.type !== 'notify') return;
 
@@ -90,15 +90,43 @@ async function startWA() {
     const raw = jid.split('@')[0];
     const phone = raw.replace(/\D/g, '');
 
-    // 🔥 CREAR ESTRUCTURA CORRECTA
+    // 🔥 RESOLVER UID (ARREGLADO)
+    let uid = null;
+
+    try {
+      const resUID = await fetch(`${WORKER}/resolve-uid`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-secret': SECRET
+        },
+        body: JSON.stringify({ phone })
+      });
+
+      const dataUID = await resUID.json();
+
+      console.log("🔎 resolve-uid:", dataUID);
+
+      if (!dataUID.uid) {
+        console.log("⚠️ SIN UID → usando fallback (phone)");
+        uid = phone; // fallback para que NO se pierda respuesta
+      } else {
+        uid = dataUID.uid;
+      }
+
+    } catch (e) {
+      console.log("❌ ERROR resolve-uid:", e.message);
+      uid = phone; // fallback
+    }
+
+    // 🔥 CREAR ESTRUCTURA
     if (!convs[phone]) {
       convs[phone] = {
-        jid: jid,     // 👈 guardamos JID real
+        jid: jid,
         msgs: []
       };
     }
 
-    // 🔥 ACTUALIZAR JID (por si cambia @lid / @s.whatsapp.net)
     convs[phone].jid = jid;
 
     const text =
@@ -110,7 +138,7 @@ async function startWA() {
 
     if (!text) continue;
 
-    console.log("📩 WA:", phone, text);
+    console.log("📩 WA:", phone, text, "| UID:", uid);
 
     // ✅ GUARDAR MENSAJE USUARIO
     convs[phone].msgs.push({
@@ -131,13 +159,15 @@ async function startWA() {
           'x-secret': SECRET
         },
         body: JSON.stringify({
-  from: phone,
-  text,
-        uid: phone // 🔥 TEMPORAL: usar phone como uid para probar
-       })
+          from: phone,
+          text,
+          uid
+        })
       });
 
       const data = await res.json();
+
+      console.log("🤖 Worker reply:", data);
 
       if (data.reply) {
         await sock.sendMessage(jid, { text: data.reply });
@@ -153,7 +183,7 @@ async function startWA() {
       }
 
     } catch (e) {
-      console.error("Worker error:", e.message);
+      console.error("❌ Worker error:", e.message);
     }
   }
 });
