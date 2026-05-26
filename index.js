@@ -151,40 +151,68 @@ async function startWA() {
     });
 
     // 🔁 ENVÍO AL WORKER
-    try {
-      const res = await fetch(`${WORKER}/wa`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-secret': SECRET
-        },
-        body: JSON.stringify({
-          from: phone,
-          text,
-          uid
-        })
-      });
+   // 🔁 ENVÍO AL WORKER (CORREGIDO)
+try {
 
-      const data = await res.json();
+  console.log("📤 Enviando a worker:", { phone, text, uid });
 
-      console.log("🤖 Worker reply:", data);
+  const res = await fetch(`${WORKER}/wa`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-secret': SECRET
+    },
+    body: JSON.stringify({
+      from: phone,
+      text,
+      uid
+    })
+  });
 
-      if (data.reply) {
-        await sock.sendMessage(jid, { text: data.reply });
+  const raw = await res.text(); // 👈 primero como texto
+  console.log("📥 RAW Worker:", raw);
 
-        convs[phone].msgs.push({
-          role: 'assistant',
-          text: data.reply,
-          time: new Date().toLocaleTimeString('es-CO', {
-            hour: '2-digit',
-            minute: '2-digit'
-          })
-        });
-      }
+  let data;
+  try {
+    data = JSON.parse(raw);
+  } catch (e) {
+    console.error("❌ JSON inválido del worker");
+    return;
+  }
 
-    } catch (e) {
-      console.error("❌ Worker error:", e.message);
-    }
+  console.log("📥 Worker parsed:", data);
+
+  if (!data.ok) {
+    console.error("❌ Worker respondió error:", data);
+    return;
+  }
+
+  if (data.reply) {
+
+    const currentJid = convs[phone]?.jid || jid;
+
+    console.log("📤 Enviando a WA:", currentJid, data.reply);
+
+    await sock.sendMessage(currentJid, {
+      text: data.reply
+    });
+
+    convs[phone].msgs.push({
+      role: 'assistant',
+      text: data.reply,
+      time: new Date().toLocaleTimeString('es-CO', {
+        hour: '2-digit',
+        minute: '2-digit'
+      })
+    });
+
+  } else {
+    console.log("⚠️ Worker sin reply");
+  }
+
+} catch (e) {
+  console.error("❌ Worker error:", e);
+}
   }
 });
 
