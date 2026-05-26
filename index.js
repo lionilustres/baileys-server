@@ -162,11 +162,7 @@ try {
       'Content-Type': 'application/json',
       'x-secret': SECRET
     },
-    body: JSON.stringify({
-      from: phone,
-      text,
-      uid
-    })
+    body: JSON.stringify({ from: phone, text, uid: process.env.OWNER_UID })
   });
 
   const raw = await res.text(); // 👈 primero como texto
